@@ -2,6 +2,7 @@
 
 from mcp_forge.core.render.check_output import check_generated_project, scan_file_ast
 from mcp_forge.core.render.jinja_env import create_jinja_env
+from mcp_forge.core.render.package import create_deterministic_zip
 from mcp_forge.core.render.renderer import render_project
 from mcp_forge.core.render.writer import (
     copy_runtime_files,
@@ -12,6 +13,7 @@ from mcp_forge.core.render.writer import (
 __all__ = [
     "check_generated_project",
     "copy_runtime_files",
+    "create_deterministic_zip",
     "create_jinja_env",
     "render_project",
     "render_template_to_file",

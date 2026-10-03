@@ -36,3 +36,25 @@ def test_path_traversal_attempts_rejected(tmp_path: Path) -> None:
         with pytest.raises(ForgeError) as exc_info:
             safe_join(base, path)
         assert exc_info.value.code == "PATH_TRAVERSAL_DETECTED"
+
+
+def test_build_file_browser_traversal_attempts_rejected(tmp_path: Path) -> None:
+    """get_build_file_content safely rejects path traversal attempts."""
+    from mcp_forge.services.builds import get_build_file_content
+
+    base = tmp_path / "project"
+    base.mkdir()
+    (base / "server.py").write_text("ok", encoding="utf-8")
+
+    hostile_paths = [
+        "../secret.txt",
+        "../../etc/passwd",
+        "/etc/passwd",
+        "nested/../../secret.txt",
+        "C:\\Windows\\System32",
+    ]
+    for path in hostile_paths:
+        with pytest.raises(ForgeError) as exc_info:
+            get_build_file_content(base, path)
+        assert exc_info.value.code == "PATH_TRAVERSAL_DETECTED"
+

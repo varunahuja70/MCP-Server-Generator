@@ -105,6 +105,10 @@ class ManifestDoc(BaseModel):
     auth: dict[str, Any] = Field(default_factory=dict)
     tools: list[ManifestTool] = Field(default_factory=list)
 
+    @property
+    def tool_count(self) -> int:
+        return len(self.tools)
+
 
 def validate_manifest(data: dict[str, Any]) -> None:
     """Validate tools.json data against TOOLS_JSON_SCHEMA."""

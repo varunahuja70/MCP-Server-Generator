@@ -18,7 +18,7 @@ from mcp_forge.db.models.project_settings import ProjectSettings
 from mcp_forge.db.models.review_finding import ReviewFinding
 from mcp_forge.db.models.spec_version import SpecVersion
 from mcp_forge.db.models.trace_event import TraceEvent
-from mcp_forge.db.session import get_db_session, purge_old_traces
+from mcp_forge.db.session import get_db_session, purge_old_traces, reset_engine
 from mcp_forge.db.uuid_helper import uuidv7
 
 
@@ -54,6 +54,7 @@ def test_alembic_migrations_upgrade_and_downgrade(tmp_path: Path) -> None:
 
 @pytest.mark.asyncio
 async def test_models_lifecycle_and_cascades(tmp_path: Path) -> None:
+    await reset_engine()
     db_file = tmp_path / "test_lifecycle.sqlite3"
     db_url = f"sqlite+aiosqlite:///{db_file.as_posix()}"
     test_settings = Settings(

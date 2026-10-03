@@ -20,6 +20,15 @@ _engine: AsyncEngine | None = None
 _session_factory: async_sessionmaker[AsyncSession] | None = None
 
 
+async def reset_engine() -> None:
+    """Dispose and clear global engine and session factory."""
+    global _engine, _session_factory
+    if _engine is not None:
+        await _engine.dispose()
+        _engine = None
+    _session_factory = None
+
+
 def get_engine(settings: Settings | None = None) -> AsyncEngine:
     """Initialize or return the cached async SQLAlchemy engine."""
     global _engine
