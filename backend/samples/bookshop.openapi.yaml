@@ -1,0 +1,291 @@
+openapi: 3.1.0
+info:
+  title: Bookshop API
+  description: Bookshop inventory and order management API.
+  version: 1.0.0
+servers:
+  - url: https://api.bookshop.example.com/v1
+    description: Production server
+paths:
+  /books:
+    get:
+      summary: List all books
+      description: Returns a paginated list of books in the catalogue.
+      operationId: listBooks
+      parameters:
+        - name: author
+          in: query
+          description: Filter books by author name
+          required: false
+          schema:
+            type: string
+        - name: limit
+          in: query
+          description: Maximum number of books to return
+          required: false
+          schema:
+            type: integer
+            default: 20
+            maximum: 100
+      responses:
+        '200':
+          description: A list of books
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Book'
+    post:
+      summary: Add a new book
+      description: Adds a new book to the catalogue.
+      operationId: createBook
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BookInput'
+      responses:
+        '201':
+          description: Book successfully created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Book'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /books/{book_id}:
+    get:
+      summary: Get book details
+      description: Retrieves details of a specific book by its ID.
+      operationId: getBook
+      parameters:
+        - name: book_id
+          in: path
+          required: true
+          description: Unique book identifier
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Book details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Book'
+        '404':
+          description: Book not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    put:
+      summary: Update book details
+      description: Updates an existing book in the catalogue.
+      operationId: updateBook
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: book_id
+          in: path
+          required: true
+          description: Unique book identifier
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BookInput'
+      responses:
+        '200':
+          description: Book updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Book'
+        '404':
+          description: Book not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    delete:
+      summary: Delete a book
+      description: Removes a book from the catalogue.
+      operationId: deleteBook
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: book_id
+          in: path
+          required: true
+          description: Unique book identifier
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Book deleted successfully
+        '404':
+          description: Book not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /orders:
+    get:
+      summary: List customer orders
+      description: Lists recent customer orders.
+      operationId: listOrders
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [pending, completed, cancelled]
+      responses:
+        '200':
+          description: List of orders
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Order'
+    post:
+      summary: Create an order
+      description: Places a new book order.
+      operationId: createOrder
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OrderInput'
+      responses:
+        '201':
+          description: Order placed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Order'
+
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+    BearerAuth:
+      type: http
+      scheme: bearer
+  schemas:
+    Book:
+      type: object
+      required:
+        - id
+        - title
+        - author
+        - price
+      properties:
+        id:
+          type: string
+          example: bk_123
+        title:
+          type: string
+          example: The Rust Programming Language
+        author:
+          type: string
+          example: Steve Klabnik
+        price:
+          type: number
+          example: 39.99
+        in_stock:
+          type: boolean
+          default: true
+    BookInput:
+      type: object
+      required:
+        - title
+        - author
+        - price
+      properties:
+        title:
+          type: string
+          example: The Rust Programming Language
+        author:
+          type: string
+          example: Steve Klabnik
+        price:
+          type: number
+          example: 39.99
+        in_stock:
+          type: boolean
+          default: true
+    OrderItem:
+      type: object
+      required:
+        - book_id
+        - quantity
+      properties:
+        book_id:
+          type: string
+          example: bk_123
+        quantity:
+          type: integer
+          minimum: 1
+          example: 2
+    Order:
+      type: object
+      required:
+        - id
+        - items
+        - total
+        - status
+      properties:
+        id:
+          type: string
+          example: ord_987
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrderItem'
+        total:
+          type: number
+          example: 79.98
+        status:
+          type: string
+          enum: [pending, completed, cancelled]
+          example: pending
+    OrderInput:
+      type: object
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrderItem'
+    Error:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: string
+          example: Resource not found

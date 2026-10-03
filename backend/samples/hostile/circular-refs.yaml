@@ -1,0 +1,32 @@
+openapi: 3.1.0
+info:
+  title: Circular References API
+  version: 1.0.0
+paths:
+  /loop:
+    get:
+      summary: Circular endpoint
+      operationId: getLoop
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NodeA'
+components:
+  schemas:
+    NodeA:
+      type: object
+      properties:
+        name:
+          type: string
+        next:
+          $ref: '#/components/schemas/NodeB'
+    NodeB:
+      type: object
+      properties:
+        id:
+          type: integer
+        next:
+          $ref: '#/components/schemas/NodeA'

@@ -1,0 +1,79 @@
+openapi: 3.1.0
+info:
+  title: Deeply Nested API
+  version: 1.0.0
+paths:
+  /deep:
+    get:
+      summary: Deeply nested object response
+      operationId: getDeep
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  l1:
+                    type: object
+                    properties:
+                      l2:
+                        type: object
+                        properties:
+                          l3:
+                            type: object
+                            properties:
+                              l4:
+                                type: object
+                                properties:
+                                  l5:
+                                    type: object
+                                    properties:
+                                      l6:
+                                        type: object
+                                        properties:
+                                          l7:
+                                            type: object
+                                            properties:
+                                              l8:
+                                                type: object
+                                                properties:
+                                                  l9:
+                                                    type: object
+                                                    properties:
+                                                      l10:
+                                                        type: object
+                                                        properties:
+                                                          l11:
+                                                            type: object
+                                                            properties:
+                                                              l12:
+                                                                type: object
+                                                                properties:
+                                                                  l13:
+                                                                    type: object
+                                                                    properties:
+                                                                      l14:
+                                                                        type: object
+                                                                        properties:
+                                                                          l15:
+                                                                            type: object
+                                                                            properties:
+                                                                              l16:
+                                                                                type: object
+                                                                                properties:
+                                                                                  l17:
+                                                                                    type: object
+                                                                                    properties:
+                                                                                      l18:
+                                                                                        type: object
+                                                                                        properties:
+                                                                                          l19:
+                                                                                            type: object
+                                                                                            properties:
+                                                                                              l20:
+                                                                                                type: object
+                                                                                                properties:
+                                                                                                  l21:
+                                                                                                    type: string
