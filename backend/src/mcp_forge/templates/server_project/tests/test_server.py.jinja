@@ -1,0 +1,21 @@
+"""Test that server loads tools correctly."""
+
+import json
+from pathlib import Path
+import pytest
+
+from server import server
+
+
+@pytest.mark.asyncio
+async def test_server_lists_tools() -> None:
+    manifest_path = Path(__file__).resolve().parent.parent / "tools.json"
+    manifest_data = json.loads(manifest_path.read_text(encoding="utf-8"))
+    expected_count = len(manifest_data.get("tools", []))
+
+    tools = await server.list_tools()
+    assert len(tools) == expected_count
+
+    expected_names = {t["name"] for t in manifest_data.get("tools", [])}
+    actual_names = {t.name for t in tools}
+    assert actual_names == expected_names

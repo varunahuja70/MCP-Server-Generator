@@ -1,0 +1,24 @@
+"""Verify tools.json structure and identifier safety."""
+
+import json
+from pathlib import Path
+import re
+
+IDENTIFIER_PATTERN = re.compile(r"^[a-z][a-z0-9_]{0,63}$")
+
+
+def test_manifest_schema_and_names() -> None:
+    manifest_path = Path(__file__).resolve().parent.parent / "tools.json"
+    assert manifest_path.exists(), "tools.json must exist"
+
+    data = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert "tools" in data
+
+    names: set[str] = set()
+    for tool in data["tools"]:
+        name = tool["name"]
+        assert IDENTIFIER_PATTERN.match(name), f"Invalid tool name: '{name}'"
+        assert name not in names, f"Duplicate tool name: '{name}'"
+        names.add(name)
+        assert "description" in tool
+        assert "input_schema" in tool

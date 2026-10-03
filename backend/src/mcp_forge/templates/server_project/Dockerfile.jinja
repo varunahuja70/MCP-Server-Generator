@@ -1,0 +1,32 @@
+FROM python:3.13-slim AS builder
+
+WORKDIR /app
+
+# Install uv
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/uv
+
+# Install dependencies
+COPY pyproject.toml .
+RUN uv pip install --no-cache --system -r <(uv pip compile pyproject.toml)
+
+FROM python:3.13-slim AS runner
+
+WORKDIR /app
+
+# Create non-root user
+RUN useradd -m -u 1000 appuser && \
+    chown -R appuser:appuser /app
+
+# Copy site-packages from builder
+COPY --from=builder /usr/local/lib/python3.13/site-packages /usr/local/lib/python3.13/site-packages
+COPY --from=builder /usr/local/bin /usr/local/bin
+
+# Copy server code
+COPY --chown=appuser:appuser . .
+
+USER appuser
+
+ENV PYTHONUNBUFFERED=1
+ENV MCP_TRANSPORT=stdio
+
+CMD ["python", "server.py"]

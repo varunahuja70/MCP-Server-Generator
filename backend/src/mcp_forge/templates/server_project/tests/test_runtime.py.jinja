@@ -1,0 +1,21 @@
+"""Test that runtime components function correctly."""
+
+from runtime import build_request, shape_success_response
+import httpx
+
+
+def test_runtime_build_request() -> None:
+    url, query, headers, json_body, form_body = build_request(
+        base_url="https://api.example.com",
+        path_template="/items/{item_id}",
+        arguments={"item_id": "123", "q": "search"},
+        param_locations={"item_id": "path", "q": "query"},
+    )
+    assert url == "https://api.example.com/items/123"
+    assert query["q"] == "search"
+
+
+def test_runtime_response_shaping() -> None:
+    resp = httpx.Response(200, json={"message": "hello"})
+    shaped = shape_success_response(resp)
+    assert "hello" in shaped

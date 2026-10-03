@@ -123,3 +123,27 @@ class SSRFBlockedError(ForgeError):
             status_code=400,
             details=details,
         )
+
+
+class SecurityError(ForgeError):
+    """Raised when a security policy or validation check fails."""
+
+    def __init__(self, message: str = "Security check violation", details: Any = None) -> None:
+        super().__init__(
+            message=message,
+            code="SECURITY_VIOLATION",
+            status_code=400,
+            details=details,
+        )
+
+
+class ValidationError(ForgeError):
+    """Raised when data validation fails."""
+
+    def __init__(self, message: str = "Validation failed", details: Any = None) -> None:
+        super().__init__(
+            message=message,
+            code="VALIDATION_ERROR",
+            status_code=400,
+            details=details,
+        )

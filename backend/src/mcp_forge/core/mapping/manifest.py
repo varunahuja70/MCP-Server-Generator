@@ -79,6 +79,10 @@ class ManifestTool(BaseModel):
     is_flattened_body: bool = False
 
 
+# Alias ToolManifest to ManifestTool for convenience
+ToolManifest = ManifestTool
+
+
 class ManifestInfo(BaseModel):
     """Information block in tools.json."""
 
