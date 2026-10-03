@@ -1,0 +1,98 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  backend-checks:
+    name: Backend Lint, Types & Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Install dependencies
+        run: |
+          cd backend
+          uv sync --dev
+
+      - name: Lint (Ruff)
+        run: |
+          cd backend
+          uv run ruff check .
+          uv run ruff format --check .
+
+      - name: Type Check (Mypy Strict)
+        run: |
+          cd backend
+          uv run mypy src tests
+
+      - name: Tests & Coverage
+        run: |
+          cd backend
+          uv run pytest --cov=mcp_forge --cov-report=xml
+
+      - name: Security Audit (pip-audit)
+        run: |
+          cd backend
+          uv run pip-audit
+
+  frontend-checks:
+    name: Frontend Lint & Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Install dependencies
+        run: |
+          cd frontend
+          pnpm install --frozen-lockfile
+
+      - name: Lint & Typecheck
+        run: |
+          cd frontend
+          pnpm lint
+          pnpm tsc --noEmit
+
+      - name: Tests
+        run: |
+          cd frontend
+          pnpm test
+
+      - name: Security Audit (npm audit)
+        run: |
+          cd frontend
+          pnpm audit --audit-level=high
+
+  secret-scan:
+    name: Secret Scanning (Gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

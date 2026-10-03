@@ -1,0 +1,26 @@
+services:
+  forge:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - forge_data:/app/data
+    environment:
+      - ENV=production
+      - FORGE_MODE=local
+      - FORGE_HOST=0.0.0.0
+      - FORGE_PORT=8080
+      - FORGE_DATA_DIR=/app/data
+      - PLAYGROUND_ENABLED=true
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+
+volumes:
+  forge_data:
