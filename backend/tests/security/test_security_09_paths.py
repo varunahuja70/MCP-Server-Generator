@@ -57,4 +57,3 @@ def test_build_file_browser_traversal_attempts_rejected(tmp_path: Path) -> None:
         with pytest.raises(ForgeError) as exc_info:
             get_build_file_content(base, path)
         assert exc_info.value.code == "PATH_TRAVERSAL_DETECTED"
-
