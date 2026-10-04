@@ -1,0 +1,128 @@
+"""Security test 08: Playground sandbox environment scrubbing, concurrency limits, and process cleanup."""
+
+import hashlib
+from pathlib import Path
+
+import pytest
+from alembic import command
+from alembic.config import Config
+
+from mcp_forge.config import Settings
+from mcp_forge.db.models.project import Project
+from mcp_forge.db.models.project_settings import ProjectSettings
+from mcp_forge.db.models.spec_version import SpecVersion
+from mcp_forge.db.session import get_db_session, reset_engine
+from mcp_forge.errors import ConflictError
+from mcp_forge.playground.manager import SessionManager
+from mcp_forge.playground.sandbox import SandboxLauncher
+from mcp_forge.services.builds import create_build_for_project
+
+SAMPLE_DIR = Path(__file__).resolve().parent.parent.parent / "samples"
+
+
+def test_sandbox_launcher_environment_scrubbing(tmp_path: Path) -> None:
+    """Sandbox environment inherits only minimal safe OS variables, redirects HOME/TEMP, and adds user credentials."""
+    dummy_server_dir = tmp_path / "server"
+    dummy_server_dir.mkdir()
+
+    launcher = SandboxLauncher(
+        server_dir=dummy_server_dir,
+        user_env_vars={"MY_SECRET_API_KEY": "secret_val_123"},
+        base_url_override="http://127.0.0.1:9999",
+    )
+    launcher.temp_dir = tmp_path / "scratch"
+    launcher.temp_dir.mkdir()
+
+    env = launcher.build_scrubbed_env()
+
+    # User supplied credentials present in process env
+    assert env["MY_SECRET_API_KEY"] == "secret_val_123"
+    assert env["API_BASE_URL"] == "http://127.0.0.1:9999"
+    assert env["MCP_TRANSPORT"] == "stdio"
+
+    # HOME / TEMP redirected to scratch temp dir
+    assert env["HOME"] == str(launcher.temp_dir)
+
+    # PYTHONPATH includes server_dir
+    assert str(dummy_server_dir.resolve()) in env["PYTHONPATH"]
+
+
+@pytest.mark.asyncio
+async def test_session_manager_concurrency_cap_and_cleanup(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Security test 08: Session manager enforces concurrency limit and terminates sessions cleanly."""
+    await reset_engine()
+    db_file = tmp_path / "test_playground.sqlite3"
+    db_url = f"sqlite+aiosqlite:///{db_file.as_posix()}"
+    test_settings = Settings(
+        forge_mode="local",
+        forge_host="127.0.0.1",
+        forge_data_dir=tmp_path / "data",
+        database_url=db_url,
+        playground_max_sessions=1,  # Set concurrency cap to 1
+    )
+    monkeypatch.setattr("mcp_forge.services.builds.get_settings", lambda: test_settings)
+    monkeypatch.setattr("mcp_forge.playground.manager.get_settings", lambda: test_settings)
+
+    alembic_cfg = Config("alembic.ini")
+    alembic_cfg.set_main_option("sqlalchemy.url", db_url)
+    command.upgrade(alembic_cfg, "head")
+
+    raw_text = (SAMPLE_DIR / "bookshop.openapi.yaml").read_text(encoding="utf-8")
+    sha256 = hashlib.sha256(raw_text.encode("utf-8")).hexdigest()
+
+    async with get_db_session(test_settings) as session:
+        # Create project, spec version, and build
+        proj = Project(name="Bookshop API", slug="bookshop")
+        session.add(proj)
+        await session.flush()
+
+        settings_obj = ProjectSettings(project_id=proj.id, base_url="https://api.bookshop.com")
+        session.add(settings_obj)
+
+        spec_ver = SpecVersion(
+            project_id=proj.id,
+            version_no=1,
+            source_type="sample",
+            source_ref="bookshop.openapi.yaml",
+            format="yaml",
+            spec_kind="oas30",
+            sha256=sha256,
+            raw_text=raw_text,
+            operation_count=5,
+        )
+        session.add(spec_ver)
+        await session.commit()
+
+        build = await create_build_for_project(session, project_id=proj.id)
+        assert build.status == "succeeded"
+
+        manager = SessionManager()
+
+        # 1. Create session 1
+        s1 = await manager.create_session(session, build_id=build.id, target="mock")
+        assert s1.status == "running"
+        assert manager.active_count == 1
+
+        # Verify session can list tools
+        active1 = manager.get_session(s1.id)
+        tools = await active1.client.list_tools()
+        assert len(tools) > 0
+
+        # Verify trace has recorded client and server messages
+        assert len(active1.trace.events) > 0
+
+        # 2. Creating session 2 should violate concurrency cap (max 1) and raise ConflictError
+        with pytest.raises(ConflictError, match="Maximum concurrent playground sessions"):
+            await manager.create_session(session, build_id=build.id, target="mock")
+
+        # 3. Stop session 1
+        await manager.stop_session(session, s1.id)
+        assert manager.active_count == 0
+
+        # 4. Now session 2 can be created
+        s2 = await manager.create_session(session, build_id=build.id, target="mock")
+        assert manager.active_count == 1
+        await manager.stop_session(session, s2.id)
+        assert manager.active_count == 0

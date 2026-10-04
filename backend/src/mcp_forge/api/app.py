@@ -155,4 +155,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "env": app_settings.env,
         }
 
+    # Register API routers
+    from mcp_forge.api.routes import playground_router
+
+    app.include_router(playground_router)
+
     return app

@@ -45,3 +45,25 @@ def test_redact_nested_dictionary_and_lists() -> None:
     assert redacted["nested"]["items"][0]["token"] == "[REDACTED]"
     assert "sk-" not in redacted["nested"]["items"][1]["text"]
     assert "[REDACTED]" in redacted["nested"]["items"][1]["text"]
+
+
+def test_trace_recorder_redacts_credentials() -> None:
+    """TraceRecorder scrubs secrets and credentials from trace events."""
+    from mcp_forge.playground.trace import TraceRecorder
+
+    user_secret = "super_secret_api_token_9999"
+    recorder = TraceRecorder(session_id="test-session", extra_secrets={user_secret})
+
+    event = recorder.record(
+        direction="client_to_server",
+        message={
+            "method": "tools/call",
+            "params": {
+                "name": "get_data",
+                "arguments": {"token": user_secret, "auth": "Bearer secret_12345"},
+            },
+        },
+    )
+
+    assert user_secret not in event["message_json"]
+    assert "[REDACTED]" in event["message_json"]
