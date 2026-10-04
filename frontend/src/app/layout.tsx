@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "@/styles/globals.css";
+import { QueryProvider } from "@/lib/providers/QueryProvider";
 
 export const metadata: Metadata = {
   title: "MCP Forge",
@@ -13,8 +14,8 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className="dark">
-      <body className="min-h-screen bg-[var(--background)] text-[var(--text)] antialiased">
-        {children}
+      <body className="min-h-screen bg-[var(--background)] text-[var(--text)] antialiased selection:bg-[var(--accent)]/30">
+        <QueryProvider>{children}</QueryProvider>
       </body>
     </html>
   );
