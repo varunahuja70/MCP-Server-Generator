@@ -32,4 +32,4 @@ This Code of Conduct applies within all community spaces, and also applies when 
 
 ## Enforcement
 
-Instances of abusive, harassing, or otherwise unacceptable behavior may be reported to the project team at `conduct@mcp-forge.dev`. All complaints will be reviewed and investigated promptly and fairly.
+Instances of abusive, harassing, or otherwise unacceptable behavior may be reported to the repository maintainer through GitHub issues or security channels. All complaints will be reviewed and investigated promptly and fairly.

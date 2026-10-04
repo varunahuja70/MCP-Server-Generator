@@ -241,3 +241,31 @@ def test_sandbox_launcher_missing_server_cleanup(tmp_path: Path) -> None:
 
     launcher.terminate()
     assert launcher.temp_dir is None
+
+
+def test_sandbox_launcher_prevents_env_override(tmp_path: Path) -> None:
+    """SandboxLauncher prevents hostile user env vars from overriding critical runtime settings."""
+    empty_dir = tmp_path / "server_dir"
+    empty_dir.mkdir()
+
+    launcher = SandboxLauncher(
+        server_dir=empty_dir,
+        user_env_vars={
+            "PYTHONPATH": "/malicious/override",
+            "PATH": "/malicious/bin",
+            "MCP_TRANSPORT": "malicious",
+            "API_BASE_URL": "http://evil.com",
+            "VALID_API_KEY": "secret-12345",
+            "123INVALID": "bad-key",
+        },
+    )
+    env = launcher.build_scrubbed_env()
+
+    # Protected keys must NOT be overridden by user
+    assert env["MCP_TRANSPORT"] == "stdio"
+    assert "/malicious/override" not in env["PYTHONPATH"]
+    assert env.get("PATH") != "/malicious/bin"
+    # Malformed keys rejected
+    assert "123INVALID" not in env
+    # Legitimate credentials preserved
+    assert env["VALID_API_KEY"] == "secret-12345"

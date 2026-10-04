@@ -1,118 +1,161 @@
-# MCP Forge
+# MCP Server Generator
 
 [![CI](https://github.com/varunahuja70/MCP-Server-Generator/actions/workflows/ci.yml/badge.svg)](https://github.com/varunahuja70/MCP-Server-Generator/actions)
-[![MCP Spec Revision](https://img.shields.io/badge/MCP%20Spec-2026--07--28-blue)](https://modelcontextprotocol.io/specification/2026-07-28)
-[![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-blue.svg)](https://python.org)
-[![Next.js 16](https://img.shields.io/badge/Next.js-16.3-black)](https://nextjs.org)
+[![Python](https://img.shields.io/badge/Python-3.11%2B-blue.svg)](https://python.org)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.115%2B-009688.svg)](https://fastapi.tiangolo.com)
+[![Next.js](https://img.shields.io/badge/Next.js-16.3-black.svg)](https://nextjs.org)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.7-blue.svg)](https://www.typescriptlang.org)
+[![MCP Spec](https://img.shields.io/badge/MCP%20Spec-2026--07--28-informational.svg)](https://modelcontextprotocol.io)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-**Turn any OpenAPI or Swagger specification into a ready-to-run Model Context Protocol (MCP) server, with an interactive testing Playground and real-time protocol trace.**
+Turn OpenAPI and Swagger specifications into production-ready Model Context Protocol (MCP) servers with an interactive testing Playground and real-time protocol trace streaming.
 
-Self-hosted, deterministic, local-first, and secure by design. Both the Next.js web application and the Typer CLI (`forge`) share a single core engine.
-
----
-
-## 1. Project Overview
-
-MCP Forge is a developer tool that bridges existing REST APIs into the AI agent ecosystem. By ingesting OpenAPI 2.0 (Swagger), 3.0, 3.1, and 3.2 specifications, Forge generates fully-functional MCP servers that AI applications (such as Claude Desktop, Cursor, and custom agentic frameworks) can immediately connect to and invoke as standard tools.
+MCP Server Generator (`mcp-forge`) is a local-first, security-hardened developer tool that bridges existing REST APIs into the AI agent ecosystem. Both the Next.js web application and the Typer CLI share a single deterministic compilation engine.
 
 ---
 
-## 2. Why MCP Forge
+## Product Overview
 
-1. **Deterministic & Isolated Architecture:** Rather than using unconstrained LLMs or string concatenation to generate arbitrary Python code from untrusted specifications, MCP Forge strictly separates spec metadata into a validated `tools.json` manifest and pairs it with a battle-tested, pre-audited static runtime engine.
-2. **AST Security Verification:** Every rendered Python file is analyzed with Python's Abstract Syntax Tree (`ast.parse`) to guarantee no dynamic execution primitives (`eval`, `exec`, `os.system`, `subprocess`) can slip into generated projects.
-3. **Safe-by-Default Operation:** Mutating and destructive operations (`POST`, `PUT`, `DELETE`) are disabled by default. AI agents only receive read access until an authorized engineer explicitly enables writing tools.
-4. **Built-in Mocking & Playground:** Test your MCP server tools immediately with zero manual configuration. Spawns an in-process MCP server with SSE-streamed JSON-RPC protocol messages and simulated responses.
+The [Model Context Protocol](https://modelcontextprotocol.io) (MCP) provides an open standard for connecting AI applications—such as Claude Desktop, Cursor, and autonomous agent frameworks—to external data sources and tools. Manually writing an MCP server for an enterprise REST API is repetitive and error-prone, requiring schema translation, input validation, rate limiting, and credential handling.
+
+MCP Server Generator automates this transition safely:
+
+- **Ingests any standard specification:** Supports OpenAPI 3.0, 3.1, 3.2, and Swagger 2.0 in JSON or YAML.
+- **Deterministic compilation:** Separates API metadata into a verified `tools.json` manifest and pairs it with an audited static runtime engine. It avoids unconstrained LLM code generation for tool dispatch.
+- **AST Security Verification:** Every rendered Python file is scanned using Python's Abstract Syntax Tree (`ast.parse`) to guarantee no dynamic execution primitives (`eval`, `exec`, `os.system`, `subprocess`) can slip into generated projects.
+- **Safe-by-default access:** All mutating endpoints (`POST`, `PUT`, `DELETE`) are disabled by default. AI agents receive read access only until an authorized engineer explicitly enables writing operations.
+- **In-process interactive Playground:** Test generated servers immediately in mock mode (schema-simulated data) or live mode with real-time Server-Sent Events (SSE) JSON-RPC protocol inspection.
 
 ---
 
-## 3. Architecture Diagram
+## Architecture
+
+The system is organized into clean functional layers sharing a single core engine:
 
 ```mermaid
 flowchart TD
-    subgraph Ingest & Verification
-        A["OpenAPI / Swagger Spec\n(v2.0, v3.0, v3.1, v3.2)"] --> B["Streaming Ingest & Size Guard\n(Max 10 MB, Alias & Depth Caps)"]
-        B --> C["SSRF Guard\n(Blocks loopback, RFC1918, 169.254.169.254)"]
-        C --> D["Schema Validation & Local $ref Resolution"]
+    subgraph Client ["Client Interfaces"]
+        UI["Next.js 16 Web UI\n(App Router + Tailwind)"]
+        CLI["Typer CLI (forge)\n(Headless CI / Local)"]
     end
 
-    subgraph Core Pipeline
-        D --> E["IR Normalization (IRApi)\n(Deterministic Operation Extraction)"]
-        E --> F["Tool Mapping & Gate\n(Identifier Regex: ^[a-z][a-z0-9_]{0,63}$)"]
-        F --> G["Security & Quality Review Engine\n(SEC-001..006, QUAL-001..006)"]
+    subgraph API ["FastAPI Service (Port 8080)"]
+        ROUTER["API Routers\n(Projects, Specs, Builds, Playground)"]
+        AUTH["Security Middleware\n(Host Allowlist, CSRF, Auth Token)"]
+        DB[(SQLite 3 WAL\n+ Async SQLAlchemy)]
     end
 
-    subgraph Generation & Runtime
-        G --> H["Deterministic Artifact Generation\n(tools.json Manifest + Static Runtime)"]
-        H --> I["AST Security Verifier\n(Blocks eval, exec, subprocess, os.system)"]
-        I --> J["Deterministic ZIP Package & SHA256"]
+    subgraph Core ["Deterministic Core Engine"]
+        INGEST["Ingest & SSRF Guard\n(Socket Pinning, DNS Rebinding Defense)"]
+        PARSE["Parser & Validator\n(OAS 3.x, Swagger 2.0, Depth Limits)"]
+        IR["IR Normalizer (IRApi)\n(Deterministic Operation Extraction)"]
+        MAP["Tool Mapper\n(Regex Identifier Gate, Safe Defaults)"]
+        REVIEW["Review Engine\n(SEC-001..006, QUAL-001..006)"]
+        RENDER["Jinja2 & AST Verifier\n(Blocks eval, exec, os.system)"]
     end
 
-    subgraph Client Interfaces
-        J --> K["Web App (Next.js 16 + Tailwind)\nPlayground & SSE Protocol Trace"]
-        J --> L["CLI Tool (forge)\nCI/CD, Check, Review, Generate"]
-        J --> M["AI Clients\n(Claude Desktop, Cursor, Stdio CLI, Streamable HTTP)"]
+    subgraph Playground ["Testing Runtime"]
+        MGR["Session Manager\n(Process-Local Concurrency Limits)"]
+        SB["Process-Isolated Sandbox\n(Scrubbed Env, Pipe Drain)"]
+        MOCK["In-Process Mock Server\n(Starlette + Dynamic Generator)"]
+        TRACE["SSE Trace Bus\n(JSON-RPC 2.0 Frames)"]
     end
+
+    subgraph Output ["Generated Artifacts"]
+        SRV["MCP Server Package\n(server.py + tools.json + Runtime)"]
+        ZIP["Deterministic ZIP\n(Fixed Timestamps, SHA256)"]
+    end
+
+    UI --> AUTH
+    CLI --> Core
+    AUTH --> ROUTER
+    ROUTER --> DB
+    ROUTER --> Core
+    INGEST --> PARSE --> IR --> MAP --> REVIEW --> RENDER
+    RENDER --> SRV --> ZIP
+    ROUTER --> MGR
+    MGR --> SB
+    MGR --> MOCK
+    SB --> TRACE
+    MOCK --> SB
+    TRACE --> UI
+```
+
+### Key Components
+
+- **Core Engine (`backend/src/mcp_forge/core`):** Pure-function pipeline that parses, validates, normalizes, reviews, and renders server code.
+- **SSRF Defense (`mcp_forge/core/security/ssrf.py`):** Socket-level network backend that pins verified IP addresses to eliminate DNS rebinding / TOCTOU windows while preserving TLS SNI and certificate validation.
+- **Review Engine (`mcp_forge/core/review`):** Static analyzer executing 12 automated checks for security vulnerabilities (unauthenticated mutations, prompt injection patterns, homoglyphs) and quality defects.
+- **Playground Subprocess Launcher (`mcp_forge/playground/sandbox.py`):** Spawns isolated server processes with scrubbed environment variables, bounded stderr ring-buffers to prevent OS pipe buffer deadlocks, and process-tree termination.
+
+---
+
+## User Journey Workflow
+
+```mermaid
+flowchart LR
+    A["1. Ingest Spec\n(Upload, URL, Sample)"] --> B["2. Validate & Normalize\n(SSRF Check, Size Limit)"]
+    B --> C["3. Review Findings\n(Security & Quality Rules)"]
+    C --> D["4. Select Tools\n(Safe Read-Only Defaults)"]
+    D --> E["5. Generate & Package\n(AST Audit, ZIP Archive)"]
+    E --> F["6. Test in Playground\n(Mock / Live, Real-Time Trace)"]
+    F --> G["7. Connect AI Client\n(Claude Desktop, Cursor)"]
 ```
 
 ---
 
-## 4. Request / Generation Lifecycle
+## Implemented Features
 
-1. **Ingestion:** Specifications are loaded via upload, pasted text, or remote URL with streaming size caps (10 MB). Remote URLs undergo strict IP pre-resolution and hop-by-hop redirect validation against loopback, private RFC1918, carrier-grade NAT, and cloud metadata addresses (`169.254.169.254`).
-2. **Parsing & Detection:** Format detection identifies Swagger 2.0 or OpenAPI 3.x. Schema validation verifies official specification standards. References (`$ref`) are resolved locally with cycle detection and depth cutoffs.
-3. **IR Normalization:** Specification paths and methods are normalized into a unified intermediate representation (`IRApi`). Hidden, invisible, and bidirectional Unicode characters are stripped.
-4. **Tool Mapping:** Endpoints are mapped to MCP tool candidates. Tool names are normalized and validated against `^[a-z][a-z0-9_]{0,63}$`. Default selection rules enable read-only (`GET`) endpoints and disable mutating endpoints.
-5. **Security & Quality Audit:** Automated audit rules run across the spec, checking for unauthenticated mutating endpoints (`SEC-003`), prompt-like instructions in descriptions (`SEC-002`), missing parameter descriptions (`QUAL-001`), and schema ambiguities.
-6. **Artifact Generation:** Jinja2 renders a deterministic `tools.json` manifest alongside static runtime files (`server.py`, `runtime/client.py`, `runtime/auth.py`, `pyproject.toml`, Dockerfile, tests).
-7. **AST Audit & Packaging:** Python AST inspection ensures no unapproved system calls exist in rendered Python files. Artifacts are bundled into a bit-for-bit reproducible ZIP archive with fixed 2026-01-01 timestamps.
+### Ingestion & Validation
+- [x] Multi-format ingestion: OpenAPI 3.0, 3.1, 3.2, and Swagger 2.0 in JSON or YAML.
+- [x] Socket-pinned SSRF protection rejecting loopback, RFC 1918, RFC 6598, link-local, and cloud metadata (`169.254.169.254`) destinations.
+- [x] Streaming response body size enforcement (10 MB cap) handling misleading `Content-Length` headers safely.
+- [x] Local `$ref` resolution with circular reference cycle breaking and schema depth limits (20 levels).
+- [x] Unicode sanitization stripping directional overrides, zero-width characters, and invisible runes.
+
+### Mapping & Code Generation
+- [x] Deterministic Intermediate Representation (`IRApi`).
+- [x] Identifier normalization guaranteeing tool names match `^[a-z][a-z0-9_]{0,63}$`.
+- [x] Safe-by-default selection: `GET` operations enabled; `POST`, `PUT`, `DELETE` disabled until approved.
+- [x] Code generation using static runtime architecture: tool logic resides in `tools.json`, executed by an audited runtime client.
+- [x] Abstract Syntax Tree (`ast.parse`) inspection rejecting any forbidden calls (`eval`, `exec`, `os.system`, `subprocess`).
+- [x] Bit-for-bit reproducible ZIP archive packaging with normalized timestamps.
+
+### Interactive Playground & Protocol Trace
+- [x] In-process mock API server synthesizing valid mock payloads from OpenAPI schema definitions.
+- [x] Live mode proxying calls to real APIs with credential redaction.
+- [x] Real-time protocol trace viewer via Server-Sent Events (SSE) streaming JSON-RPC 2.0 frames.
+- [x] Subprocess environment scrubbing protecting host secrets and preventing user overrides of critical runtime variables.
+- [x] Non-blocking background stderr draining preventing OS pipe deadlocks.
+
+### Client Connect Snippets
+- [x] 1-click configuration generator for **Claude Desktop** (`claude_desktop_config.json`).
+- [x] 1-click configuration generator for **Cursor** (`mcp.json`).
+- [x] Standard I/O CLI command generation (`uv run python server.py`).
+- [x] Streamable HTTP configuration with authentication token enforcement.
 
 ---
 
-## 5. Key Features
+## Technology Stack
 
-- **Full Multi-Format Support:** Ingests Swagger 2.0, OpenAPI 3.0, 3.1, and 3.2 in JSON or YAML.
-- **Dual Interface Parity:** Feature parity between the interactive Next.js web application and the Typer CLI (`forge`).
-- **Interactive Playground:** Run MCP servers in mock mode (simulated data) or live mode with real-time SSE protocol trace streaming.
-- **Client Connect Snippets:** 1-click JSON configurations for Claude Desktop (`claude_desktop_config.json`), Cursor (`mcp.json`), Stdio CLI, and Streamable HTTP.
-- **Security Audit Engine:** Pre-flight review with severity grading (error, warning, info) and human acknowledgement workflows.
-- **Spec Versioning & Diffing:** Track spec versions within projects and view semantic diffs across API revisions.
-- **Deterministic Packaging:** Guaranteed reproducible builds and SHA256 checksums.
-
----
-
-## 6. Security Model: The 12 Foundational Guarantees
-
-MCP Forge enforces 12 audited security guarantees across parsing, mapping, and execution:
-
-| # | Security Guarantee | Implementation & Verification |
+| Layer | Technology | Purpose |
 |---|---|---|
-| **1** | **Hostile-Name Fuzz Gate** | Specification text is never concatenated or formatted into Python code; all text resides exclusively in `tools.json`. Verified via property-based hypothesis fuzzing (`test_security_01_hostile_name_fuzz.py`). |
-| **2** | **Identifier Regex Validation** | All module names, tool names, and dictionary keys must strictly match `^[a-z][a-z0-9_]{0,63}$`. Invalid characters are renamed or rejected, never escaped (`test_security_02_identifiers.py`). |
-| **3** | **AST Security Scanner** | Every generated `.py` file is parsed with `ast.parse`. Build generation immediately fails if calls to `eval`, `exec`, `os.system`, `subprocess`, or dynamic `__import__` are found (`test_security_03_ast_forbidden_calls.py`). |
-| **4** | **Resource & Bomb Protection** | Enforces streaming size caps (10 MB), YAML alias caps (max 100 aliases), schema nesting depth limits (20 levels), and circular reference cycle cuts (`test_security_04_hostile_specs.py`). |
-| **5** | **Strict SSRF Guard** | Pre-resolves IP addresses and blocks loopback, private subnets (RFC 1918), carrier-grade NAT, IPv6 unique-local, and cloud metadata (`169.254.169.254`). Re-validates every redirect hop (`test_security_05_ssrf.py`). |
-| **6** | **Unicode Sanitation & Instruction Scans** | Strips invisible/bidi Unicode characters, normalizes Unicode using NFKC, flags homoglyphs (`SEC-001`), and scans tool descriptions for prompt-injection patterns (`SEC-002`) (`test_security_06_unicode.py`). |
-| **7** | **Zero-Leak Credential Redaction** | Passwords, tokens, and API keys are scrubbed immediately from frontend memory, filtered through structlog redaction, and never written to SQLite, logs, or URL parameters (`test_security_07_redaction.py`). |
-| **8** | **Isolated Playground Sandbox** | Sandboxes run with scrubbed environment variables, isolated temporary directories, process-group termination, and strict concurrency limits (`test_security_08_playground.py`). |
-| **9** | **Path Traversal Containment** | File tree browsing and archive downloads strictly verify canonical paths against the project root, blocking relative `..` and absolute traversal escapes (`test_security_09_paths.py`). |
-| **10** | **Host Allowlisting & Token Requirement** | Local mode binds exclusively to loopback interfaces. Exposed mode refuses to start without a secure `FORGE_ACCESS_TOKEN` (minimum 16 characters) (`test_security_10_local.py`). |
-| **11** | **Streamable HTTP Non-Loopback Enforcement** | Generated servers running HTTP transport refuse to bind to non-loopback addresses (`0.0.0.0`) unless `MCP_AUTH_TOKEN` is configured (`test_generated_project.py`). |
-| **12** | **Safe-by-Default Tool Selection** | All mutating (`POST`, `PUT`) and destructive (`DELETE`) operations are strictly disabled by default; only safe read-only (`GET`) tools are enabled initially (`test_security_12_default_selection.py`). |
+| **Frontend** | Next.js 16 (App Router), React 19, Tailwind CSS v4, TanStack Query | Reactive web interface, interactive playground, and real-time trace streaming |
+| **Backend API** | FastAPI 0.115+, Uvicorn, Pydantic v2, Typer | High-performance asynchronous REST API and CLI tool |
+| **Database & ORM** | SQLite 3 (WAL mode), SQLAlchemy 2.0 (asyncio), Alembic | Local-first relational persistence for projects, spec revisions, and audit findings |
+| **Core Parser** | openapi-spec-validator, jsonschema, referencing, PyYAML | Specification validation, schema resolution, and YAML safety |
+| **MCP Runtime** | Official Model Context Protocol SDK (`mcp` v2), HTTPX, httpcore | Client-server JSON-RPC communication and socket-pinned HTTP client |
+| **Testing & Quality** | Pytest, Hypothesis, Respx, Vitest, Testing Library, Ruff, Mypy (Strict) | Property-based fuzzing, integration testing, static typing, and formatting |
+| **Deployment** | Docker (multi-stage builds), Docker Compose, GitHub Actions | Containerized execution and automated CI/CD verification |
 
 ---
 
-## 7. Requirements
+## Quick Start
 
-- **Python:** Python 3.11+ (Python 3.11, 3.12, 3.13, or 3.14 supported; Python 3.13 tested in CI)
-- **Node.js:** Node.js 22+ with `pnpm` (v9 or v10)
-- **Package Manager:** [`uv`](https://github.com/astral-sh/uv) for fast Python dependency management
-- **Operating System:** Linux, macOS, or Windows (native or WSL)
-
----
-
-## 8. Quick Start
+### Prerequisites
+- **Python:** 3.11+ (Python 3.11, 3.12, 3.13, or 3.14)
+- **Node.js:** 22+ with `pnpm` (v9 or v10)
+- **Tooling:** [`uv`](https://github.com/astral-sh/uv) (recommended for Python packaging) and `git`
 
 ### 1. Clone the Repository
 ```bash
@@ -120,144 +163,121 @@ git clone https://github.com/varunahuja70/MCP-Server-Generator.git
 cd MCP-Server-Generator
 ```
 
-### 2. Run with Make (Development Mode)
+### 2. Start with Make (Recommended)
 ```bash
-# Starts FastAPI backend (port 8080) and Next.js frontend (port 3000)
 make dev
 ```
+This runs the FastAPI backend on `http://127.0.0.1:8080` and the Next.js frontend on `http://127.0.0.1:3000` with hot reloading.
 
-Alternatively, run backend and frontend in separate terminals:
+### 3. Alternative: Run in Separate Terminals
 
+#### Terminal 1 — Backend
 ```bash
-# Terminal 1: Backend
 cd backend
 uv sync --extra dev
 uv run uvicorn mcp_forge.api.app:create_app --factory --reload --port 8080
+```
 
-# Terminal 2: Frontend
+#### Terminal 2 — Frontend
+```bash
 cd frontend
 pnpm install --frozen-lockfile
 pnpm dev
 ```
 
-### 3. Open the Web Application
-1. Navigate to **`http://localhost:3000`** in your browser.
-2. Select one of the pre-loaded sample APIs (e.g. **Task Management API** or **Bookshop API**).
-3. Review your tools and click **Generate Build**.
-4. Open the **Test** tab (Playground), click **Start Session**, select any tool, and run it to view live protocol traces!
+### 4. Verify Local Setup
+1. Open **`http://localhost:3000`** in your browser.
+2. Select one of the pre-loaded sample specifications (e.g., **Bookshop API** or **Task Management API**).
+3. Click **Review API** to inspect security findings and tool selections.
+4. Click **Generate Build** to produce a standalone MCP server.
+5. Switch to the **Test** tab, start a Playground session, and run any tool to observe live protocol traces.
 
 ---
 
-## 9. Command Line Interface (`forge`)
+## Configuration Reference
 
-MCP Forge includes a command line interface for CI/CD automation pipelines and local terminal workflows:
+MCP Server Generator is configured via environment variables or a `.env` file in the working directory:
+
+| Variable | Mode | Default | Description |
+|---|---|---|---|
+| `ENV` | All | `production` | Environment mode (`development` or `production`). |
+| `FORGE_MODE` | All | `local` | Operating mode: `local` (loopback only) or `exposed` (requires token). |
+| `FORGE_HOST` | All | `127.0.0.1` | Network interface to bind. Non-loopback addresses are rejected in `local` mode. |
+| `FORGE_PORT` | All | `8080` | Port for the backend API. |
+| `FORGE_PUBLIC_HOST` | Exposed | *None* | Expected hostname for reverse-proxy Host allowlisting. |
+| `FORGE_ACCESS_TOKEN` | Exposed | *None* | Secret token required in exposed mode (minimum 16 characters). |
+| `FORGE_DATA_DIR` | All | `./data` | Directory for SQLite database (`forge.sqlite3`) and build artifacts. |
+| `DATABASE_URL` | All | *Derived* | Async SQLAlchemy connection string (`sqlite+aiosqlite:///data/forge.sqlite3`). |
+| `MAX_SPEC_BYTES` | All | `10485760` | Maximum specification upload size in bytes (10 MB). |
+| `PIPELINE_TIMEOUT_S` | All | `30` | Maximum wall-clock execution time for parsing and generation pipelines. |
+| `PLAYGROUND_ENABLED` | All | `true` (local) | Whether to permit launching interactive playground server processes. |
+| `PLAYGROUND_MAX_SESSIONS` | All | `3` | Maximum concurrent active playground sessions. |
+| `PLAYGROUND_IDLE_TIMEOUT_S` | All | `900` | Session idle timeout in seconds before automatic cleanup (15 minutes). |
+| `TRACE_RETENTION_DAYS` | All | `7` | Retention period for recorded trace events. |
+| `ALLOW_PRIVATE_SPEC_URLS` | All | `false` | When true, permits fetching specs from private RFC 1918 subnets (trusted dev only). |
+| `LOG_LEVEL` | All | `info` | Structured logging verbosity (`debug`, `info`, `warning`, `error`). |
+
+---
+
+## Usage Walkthrough
+
+### Command Line Interface (`forge`)
+
+The CLI provides headless validation, review, and generation for automated scripts and CI pipelines:
 
 ```bash
 cd backend
-uv sync --extra dev
 
-# 1. Validate an OpenAPI or Swagger file
+# Validate an OpenAPI specification
 uv run forge check samples/bookshop.openapi.yaml
 
-# 2. Run security and quality rules review
+# Run security and quality audit
 uv run forge review samples/bookshop.openapi.yaml
 
-# 3. Generate an MCP server project with safe defaults (read-only tools enabled)
-uv run forge generate samples/bookshop.openapi.yaml -o ./out/bookshop-server
+# Generate an MCP server with safe read-only defaults
+uv run forge generate samples/bookshop.openapi.yaml -o ./dist/bookshop-mcp
 
-# 4. Generate with explicit tool selection and JSON output for CI pipelines
-uv run forge generate samples/bookshop.openapi.yaml -o ./out/bookshop-server --select listBooks --json
+# Generate with specific tools enabled and JSON output for CI pipelines
+uv run forge generate samples/bookshop.openapi.yaml -o ./dist/bookshop-mcp --select listBooks --json
 
-# 5. List or seed bundled sample projects into local database
-uv run forge samples
+# Seed bundled sample projects into local database
 uv run forge samples --seed
-
-# 6. Start the FastAPI backend server via CLI
-uv run forge serve --host 127.0.0.1 --port 8080
-
-# 7. Wipe all stored local database projects and build files
-uv run forge wipe --yes
 ```
 
-### CLI Exit Codes
-- `0`: Success / valid specification / review passed with no blocking errors.
-- `1`: Invalid specification / blocking security finding / generation failure.
-- `2`: Command usage error, missing arguments, or invalid options.
+### Generated Server Structure
 
----
-
-## 10. Configuration Reference
-
-MCP Forge is configured via environment variables or a `.env` file located in the working directory:
-
-| Environment Variable | Default | Mode | Description |
-|---|---|---|---|
-| `ENV` | `production` | All | Runtime environment: `development` or `production`. |
-| `FORGE_MODE` | `local` | All | Operating mode: `local` (loopback only) or `exposed` (requires token). |
-| `FORGE_HOST` | `127.0.0.1` | All | Network interface to bind. Prohibited from non-loopback in local mode. |
-| `FORGE_PORT` | `8080` | All | Port to listen on (default 8080). |
-| `FORGE_PUBLIC_HOST` | *None* | Exposed | Hostname for reverse-proxy Host allowlisting. |
-| `FORGE_ACCESS_TOKEN` | *None* | Required in Exposed | Bearer token required in exposed mode (minimum 16 characters). |
-| `FORGE_DATA_DIR` | `./data` | All | Directory for SQLite database (`forge.sqlite3`) and build artifacts. |
-| `DATABASE_URL` | *Derived* | All | Async SQLAlchemy connection string (default: `sqlite+aiosqlite:///data/forge.sqlite3`). |
-| `MAX_SPEC_BYTES` | `10485760` | All | Maximum specification upload size in bytes (default 10 MB). |
-| `PIPELINE_TIMEOUT_S` | `30` | All | Maximum wall-clock execution time for parsing/generation pipelines. |
-| `PLAYGROUND_ENABLED` | `true` in local, `false` in exposed | All | Whether to permit spawning interactive playground server processes. |
-| `PLAYGROUND_MAX_SESSIONS` | `3` | All | Maximum concurrent active playground sessions. |
-| `PLAYGROUND_IDLE_TIMEOUT_S` | `900` | All | Maximum idle time before auto-terminating a playground session (15 min). |
-| `TRACE_RETENTION_DAYS` | `7` | All | Days to retain playground trace events before purge. |
-| `ALLOW_PRIVATE_SPEC_URLS` | `false` | All | When true, permits fetching specs from private RFC1918 addresses. |
-| `ALLOW_REMOTE_REFS` | `false` | All | When true, permits fetching remote JSON/YAML `$ref` references over HTTP. |
-| `LOG_LEVEL` | `info` | All | Logging level: `debug`, `info`, `warning`, `error`. |
-
----
-
-## 11. Generated Server Usage
-
-Every generated MCP server includes a standalone project structure:
+Every generated project is completely self-contained and ready to execute:
 
 ```text
-generated-server/
+bookshop-mcp/
 ├── runtime/
-│   ├── auth.py             # Header, bearer token, API key handling
-│   ├── client.py           # Resilient HTTP client with timeouts & retries
-│   ├── config.py           # Settings loaded from environment variables
+│   ├── auth.py             # API Key, Bearer Token, and Basic Auth handling
+│   ├── client.py           # Resilient HTTP client with retry and timeout policies
+│   ├── config.py           # Environment variable settings
 │   ├── logging.py          # Structured JSON logging to stderr with redaction
-│   ├── rate_limit.py       # Token bucket rate limiting
-│   ├── request_builder.py  # Path/query/body parameter assembly
-│   └── response.py         # Response truncation and error formatting
-├── server.py               # Main MCP Server entry point (FastMCP v2)
+│   ├── rate_limit.py       # Token-bucket rate limiting
+│   ├── request_builder.py  # Path, query, and header parameter assembly
+│   └── response.py         # Response size limits and error normalization
+├── server.py               # Main Model Context Protocol server entry point
 ├── tools.json              # Canonical schema-validated tools manifest
 ├── pyproject.toml          # Standalone Python packaging metadata
-├── Dockerfile              # Container deployment recipe
-├── .env.example            # Environment variables template
-└── README.md               # Ready-to-copy client connection instructions
+├── Dockerfile              # Production container build definition
+├── .env.example            # Environment configuration template
+└── README.md               # Quick-start instructions and client configs
 ```
 
-### Running the Generated Server
+### Connecting to Claude Desktop
 
-```bash
-cd generated-server
+Add the server to your `claude_desktop_config.json`:
 
-# 1. Install dependencies
-uv sync
-
-# 2. Run over standard I/O (Default for Claude Desktop and Cursor)
-uv run python server.py
-
-# 3. Run over Streamable HTTP transport
-uv run python server.py --http --port 8000
-```
-
-### Claude Desktop Configuration
-Add the following to your `claude_desktop_config.json`:
 ```json
 {
   "mcpServers": {
-    "my-api": {
+    "bookshop": {
       "command": "uv",
-      "args": ["run", "--directory", "/path/to/generated-server", "python", "server.py"],
+      "args": ["run", "--directory", "/absolute/path/to/bookshop-mcp", "python", "server.py"],
       "env": {
+        "API_BASE_URL": "https://api.example.com",
         "API_KEY": "your-api-key-here"
       }
     }
@@ -267,131 +287,113 @@ Add the following to your `claude_desktop_config.json`:
 
 ---
 
-## 12. Interactive Playground
-
-The built-in Playground allows developers to test MCP tools immediately without external clients:
-- **Mock Mode:** Synthesizes realistic responses from OpenAPI response schemas entirely in-process. Safe for destructive operations.
-- **Live Mode:** Dispatches real HTTP requests to remote endpoints with user-entered credentials. Non-read-only operations prompt for confirmation.
-- **Protocol Trace:** Real-time Server-Sent Events (SSE) trace viewer displays exact JSON-RPC 2.0 frames (`tools/list`, `tools/call`, responses, and durations).
-- **Process Isolation:** Sessions are executed in isolated subprocesses with automatic resource cleanup upon disconnect or idle timeout.
-
----
-
-## 13. REST API Overview
-
-The backend exposes a full OpenAPI-compliant REST API:
-
-- `GET /healthz` — Service liveness probe.
-- `GET /readyz` — Database and storage readiness probe.
-- `GET /api/projects` — List all projects.
-- `POST /api/projects` — Create a new project.
-- `GET /api/projects/{id}` — Retrieve project metadata and spec versions.
-- `POST /api/projects/{id}/specs` — Ingest a new specification version.
-- `GET /api/projects/{id}/operations` — List parsed operations and tool configuration.
-- `POST /api/projects/{id}/review` — Run automated security and quality audit.
-- `POST /api/projects/{id}/builds` — Generate a new MCP server build.
-- `GET /api/builds/{id}/files` — Inspect generated file tree.
-- `GET /api/builds/{id}/files/content` — Read generated file source code.
-- `GET /api/builds/{id}/download` — Download deterministic ZIP archive.
-- `POST /api/playground/sessions` — Start an in-process playground session.
-- `GET /api/playground/sessions/{id}/tools` — List tools from running MCP server.
-- `POST /api/playground/sessions/{id}/call` — Invoke a tool on running MCP server.
-- `GET /api/playground/sessions/{id}/trace` — Stream SSE protocol messages.
-
----
-
-## 14. Development & Testing
-
-### Available Make Targets
-```bash
-make help           # View command summary
-make dev            # Run backend and frontend concurrently
-make test           # Run complete backend and frontend test suites
-make test-backend   # Run backend pytest suite
-make test-frontend  # Run frontend vitest suite
-make lint           # Run all linting and typechecking
-make lint-backend   # Run ruff check, ruff format, and mypy
-make lint-frontend  # Run eslint and tsc --noEmit
-make migrate        # Run Alembic database migrations
-make seed           # Seed sample specifications into local database
-make build          # Build backend distribution wheel and frontend static bundle
-```
-
-### Running Backend Tests & Audit
-```bash
-cd backend
-uv sync --extra dev
-uv run ruff check .
-uv run ruff format --check .
-uv run mypy src tests
-uv run pytest
-uv run pip-audit
-```
-
-### Running Frontend Tests & Audit
-```bash
-cd frontend
-pnpm install --frozen-lockfile
-pnpm lint
-pnpm tsc --noEmit
-pnpm test
-pnpm build
-pnpm audit --audit-level=high
-```
-
----
-
-## 15. Project Structure
+## Project Structure
 
 ```text
 MCP-Server-Generator/
 ├── .github/
-│   ├── workflows/ci.yml       # Automated CI (lint, types, tests, pip-audit, npm-audit, gitleaks)
-│   └── dependabot.yml         # Dependency update schedule
+│   ├── workflows/ci.yml         # CI pipeline (lint, strict types, pytest, vitest, build, audit)
+│   ├── workflows/release.yml    # Tagged release wheel and container publication
+│   └── dependabot.yml           # Automated dependency update configuration
 ├── backend/
 │   ├── src/mcp_forge/
-│   │   ├── api/               # FastAPI application, routes, dependencies, schemas
-│   │   ├── cli/               # Typer CLI application (check, review, generate, serve, samples, wipe)
-│   │   ├── core/              # Ingest, parsing, IR normalization, tool mapping, review engine, render
-│   │   ├── db/                # SQLAlchemy async models, migrations, SQLite WAL session management
-│   │   ├── playground/        # In-process session manager, sandbox launcher, SSE trace bus
-│   │   └── services/          # Build orchestration, deterministic packaging
-│   ├── tests/                 # 175 unit, security, integration, and performance tests
-│   └── pyproject.toml         # Python package metadata and tool configurations
+│   │   ├── api/                 # FastAPI routes, middleware, dependencies, schemas
+│   │   ├── cli/                 # Typer CLI application (check, review, generate, serve, samples)
+│   │   ├── core/                # Ingest, parser, IR normalizer, tool mapper, review, render
+│   │   ├── db/                  # SQLAlchemy models, SQLite WAL session management, Alembic migrations
+│   │   ├── mock_api/            # In-process mock API server for Playground testing
+│   │   ├── playground/          # Session manager, sandbox launcher, SSE trace bus
+│   │   ├── services/            # Build management, deterministic ZIP packaging
+│   │   └── templates/           # Jinja2 templates and runtime code for generated servers
+│   ├── tests/                   # 190 automated unit, security, integration, and performance tests
+│   ├── Dockerfile               # Backend container build definition
+│   └── pyproject.toml           # Python packaging configuration and dependency lockfile
 ├── frontend/
 │   ├── src/
-│   │   ├── app/               # Next.js 16 app router pages (Home, Projects, Playground, Guide)
-│   │   ├── components/        # UI components (SchemaForm, CodeViewer, FileTree, Navbar)
-│   │   ├── lib/               # API client, React Query hooks
-│   │   └── styles/            # Tailwind CSS styling and theme tokens
-│   └── package.json           # Frontend dependencies and build scripts
-├── samples/                   # Bundled OpenAPI & Swagger test specifications
-├── docs/                      # Architectural specifications and engineering design docs
-├── .env.example               # Environment configuration template
-├── docker-compose.yml         # Containerized production stack
-├── Makefile                   # Unified developer automation commands
-├── LICENSE                    # MIT License
-├── SECURITY.md                # Vulnerability disclosure policy
-└── README.md                  # This documentation
+│   │   ├── app/                 # Next.js 16 App Router pages (Projects, Review, Builds, Playground)
+│   │   ├── components/          # Reusable UI components (Navbar, SchemaForm, CodeViewer, FileTree)
+│   │   ├── lib/                 # API client, React Query hooks, query cache management
+│   │   ├── styles/              # Tailwind CSS stylesheet and design tokens
+│   │   └── test/                # Frontend smoke, component, and schema form unit tests
+│   ├── Dockerfile               # Frontend Next.js production build definition
+│   └── package.json             # Node.js dependencies and build scripts
+├── samples/                     # Bundled OpenAPI 3.0/3.1 and Swagger 2.0 specifications
+├── docs/                        # Architecture, PRD, security model, and deployment guides
+├── docker-compose.yml           # Production container composition
+├── docker-compose.dev.yml       # Development container composition
+├── Makefile                     # Unified development and testing commands
+├── SECURITY.md                  # Private vulnerability disclosure guidelines
+├── CONTRIBUTING.md              # Contributor setup and coding standards
+└── LICENSE                      # MIT License
 ```
 
 ---
 
-## 16. Limitations
+## Testing & Quality Verification
 
-- **Single-Tenant / Local-First:** Designed for individual developers or internal engineering teams. Forge uses SQLite with WAL mode rather than multi-tenant cloud tenancy.
-- **Deterministic Static Runtime:** Tool calls are dispatched through an audited, fixed static runtime library rather than generating distinct Python source functions per endpoint.
-- **Remote `$ref` Disabled by Default:** Ingestion rejects remote `$ref` resolution over HTTP by default to protect against SSRF and supply-chain poisoning.
-- **Heuristic Instruction Detection:** `SEC-002` flags adversarial prompt injection patterns in descriptions using heuristic regexes; human review remains essential before publishing tools.
+All changes are verified through strict automated checks across backend and frontend:
+
+### Automated Test Coverage
+- **Backend Test Suite:** 190 tests passing (`pytest` with 86% coverage, including 12 dedicated security test suites).
+- **Frontend Test Suite:** 7 tests passing (`vitest` with Testing Library).
+- **Total:** 197 automated tests executed in local and remote CI pipelines.
+
+### Verification Commands
+
+```bash
+# Backend checks
+cd backend
+uv run ruff check .                      # Lint check
+uv run ruff format --check .             # Code format check
+uv run mypy src tests                    # Strict type checking (137 source files, 0 errors)
+uv run pytest --cov=mcp_forge            # Complete test suite with coverage
+uv run pip-audit                         # Dependency vulnerability audit
+
+# Frontend checks
+cd frontend
+pnpm lint                                # ESLint validation
+pnpm tsc --noEmit                        # TypeScript static type check
+pnpm test                                # Vitest test execution
+pnpm build                               # Next.js production compilation
+pnpm audit --prod --audit-level=high     # Production dependency audit
+```
 
 ---
 
-## 17. Contributing
+## Security Model & Limitations
 
-Contributions are welcome! Please read [CONTRIBUTING.md](CONTRIBUTING.md) and [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) for contribution guidelines, development workflows, and testing requirements.
+### Security Guarantees
+1. **SSRF Socket Pinning:** Outbound requests pre-resolve and validate destination IPs against private/loopback/cloud-metadata ranges and connect directly to the validated IP at the TCP socket layer, completely closing the TOCTOU DNS-rebinding window while preserving TLS SNI and certificate verification.
+2. **Deterministic Static Runtime:** Specification text and user inputs are strictly restricted to `tools.json` and runtime request data. No user-supplied text is ever interpolated into Python executable code.
+3. **AST Inspection:** Generated Python files undergo Abstract Syntax Tree analysis to confirm no dynamic execution primitives (`eval`, `exec`, `__import__`, `subprocess`, `os.system`) are present.
+4. **Environment Variable Scrubbing:** Sandboxed Playground server subprocesses receive only whitelisted OS runtime keys. Host secrets (`FORGE_ACCESS_TOKEN`, `DATABASE_URL`) are omitted, and critical runtime variables cannot be overridden by user input.
+5. **Host Header & CSRF Protection:** Local mode restricts execution to loopback interfaces. State-changing requests enforce the custom `X-Forge-Request: 1` header and validate `Origin` and `Host` headers (including bracketed IPv6 representations).
+
+### Known Architectural Limitations
+- **Single-Worker Server Architecture:** Playground sessions and active child subprocess references are maintained in process memory. The backend must run as a single process (`1 uvicorn worker`). Multi-worker deployments (e.g., `uvicorn -w 4`) are not supported for interactive playground sessions without an external process supervisor.
+- **Process Isolation Boundary:** The Playground Sandbox utilizes OS process-group management, scrubbed environment variables, and bounded I/O pipes. It provides process-level isolation rather than hypervisor or container virtualization. In multi-tenant environments, run MCP Server Generator inside container boundaries with non-root privileges.
+- **Remote `$ref` Resolution:** Resolving `$ref` targets across remote HTTP endpoints is disabled by default (`ALLOW_REMOTE_REFS=false`) to prevent blind server-side requests and supply-chain vulnerabilities.
+
+### Vulnerability Reporting
+Please report security vulnerabilities privately via [GitHub Security Advisories](https://github.com/varunahuja70/MCP-Server-Generator/security/advisories/new). We acknowledge valid reports within 48 hours.
 
 ---
 
-## 18. License
+## Roadmap
 
-This project is licensed under the MIT License — see the [LICENSE](LICENSE) file for details.
+- [ ] Support OAuth2 Authorization Code flow within the interactive Playground.
+- [ ] Containerized runner option (Docker / Podman) for untrusted multi-tenant playground executions.
+- [ ] Direct export to cloud serverless targets (AWS Lambda, Cloud Run).
+- [ ] Interactive parameter mocking rules editor in web UI.
+
+---
+
+## Contributing
+
+We welcome contributions! Please review [CONTRIBUTING.md](CONTRIBUTING.md) for local workspace setup, code standards, and branch conventions. All submissions are governed by the [Contributor Covenant Code of Conduct](CODE_OF_CONDUCT.md).
+
+---
+
+## License
+
+This project is licensed under the **MIT License** — see the [LICENSE](LICENSE) file for details.

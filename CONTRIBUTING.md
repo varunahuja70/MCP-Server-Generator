@@ -5,19 +5,19 @@ Thank you for your interest in contributing to MCP Forge! We welcome bug reports
 ## Development Setup
 
 ### Prerequisites
-- Python 3.13 or 3.14 with [`uv`](https://github.com/astral-sh/uv)
+- Python 3.11+ with [`uv`](https://github.com/astral-sh/uv)
 - Node.js 22+ with `pnpm`
 - Git
 
 ### Initializing the Workspace
 ```bash
 # Clone the repository
-git clone https://github.com/your-org/mcp-forge.git
-cd mcp-forge
+git clone https://github.com/varunahuja70/MCP-Server-Generator.git
+cd MCP-Server-Generator
 
 # Install backend dependencies
 cd backend
-uv sync
+uv sync --extra dev
 
 # Install frontend dependencies
 cd ../frontend
@@ -29,7 +29,7 @@ pnpm install
 # In the root repository directory
 make dev
 ```
-This runs the FastAPI backend on `http://127.0.0.1:8000` and the Next.js frontend on `http://127.0.0.1:3000` with hot reloading.
+This runs the FastAPI backend on `http://127.0.0.1:8080` and the Next.js frontend on `http://127.0.0.1:3000` with hot reloading.
 
 ---
 

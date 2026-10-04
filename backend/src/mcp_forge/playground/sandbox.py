@@ -8,6 +8,7 @@ hardened container environments with non-root execution and drop-capability prof
 """
 
 import os
+import re
 import shutil
 import signal
 import subprocess
@@ -16,6 +17,22 @@ import tempfile
 import threading
 from collections import deque
 from pathlib import Path
+
+PROTECTED_ENV_KEYS: frozenset[str] = frozenset(
+    {
+        "PATH",
+        "PYTHONPATH",
+        "MCP_TRANSPORT",
+        "SYSTEMROOT",
+        "WINDIR",
+        "HOME",
+        "USERPROFILE",
+        "TEMP",
+        "TMP",
+        "VIRTUAL_ENV",
+        "API_BASE_URL",
+    }
+)
 
 
 class SandboxLauncher:
@@ -75,9 +92,16 @@ class SandboxLauncher:
             env["API_BASE_URL"] = self.base_url_override
 
         # 5. User-supplied credentials for this session (kept in memory/process env only)
+        # Prevent user from overriding critical runtime settings or injecting malformed keys
         for k, v in self.user_env_vars.items():
-            if k and v:
-                env[k] = v
+            if not k or not isinstance(k, str) or not isinstance(v, str):
+                continue
+            k_clean = k.strip()
+            if not re.match(r"^[A-Za-z_][A-Za-z0-9_]*$", k_clean):
+                continue
+            if k_clean.upper() in PROTECTED_ENV_KEYS:
+                continue
+            env[k_clean] = v
 
         return env
 

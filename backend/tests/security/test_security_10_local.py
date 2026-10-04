@@ -104,3 +104,42 @@ async def test_security_headers_present(app: FastAPI) -> None:
         assert headers["x-frame-options"] == "DENY"
         assert headers["referrer-policy"] == "same-origin"
         assert "default-src 'self'" in headers["content-security-policy"]
+
+
+@pytest.mark.asyncio
+async def test_ipv6_host_header_handling(app: FastAPI) -> None:
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://[::1]:8080") as client:
+        # Bracketed IPv6 with port
+        response = await client.get("/healthz", headers={"Host": "[::1]:8080"})
+        assert response.status_code == 200
+        assert response.json() == {"status": "ok"}
+
+        # Bracketed IPv6 without port
+        response = await client.get("/healthz", headers={"Host": "[::1]"})
+        assert response.status_code == 200
+
+        # Bare IPv6 without port
+        response = await client.get("/healthz", headers={"Host": "::1"})
+        assert response.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_ipv6_origin_handling(app: FastAPI) -> None:
+    @app.post("/test-mutation-ipv6")
+    async def dummy_mutation() -> dict[str, str]:
+        return {"result": "success"}
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://[::1]:8080") as client:
+        # Valid IPv6 Origin with port
+        response = await client.post(
+            "/test-mutation-ipv6",
+            headers={
+                "Host": "[::1]:8080",
+                "X-Forge-Request": "1",
+                "Origin": "http://[::1]:8080",
+            },
+        )
+        assert response.status_code == 200
+        assert response.json() == {"result": "success"}

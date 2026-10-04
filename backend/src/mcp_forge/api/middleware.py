@@ -39,6 +39,27 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         return response
 
 
+def normalize_host(host_header: str) -> str:
+    """Extract normalized hostname without port, safely handling IPv6 brackets and ports."""
+    header = host_header.strip()
+    if not header:
+        return ""
+    if header.startswith("["):
+        # Bracketed IPv6 address, e.g. [::1] or [::1]:8080
+        end_idx = header.find("]")
+        if end_idx != -1:
+            return header[1:end_idx].lower()
+        return header.lower()
+    if ":" in header:
+        parts = header.split(":")
+        if len(parts) == 2:
+            # Single colon denotes host:port
+            return parts[0].strip().lower()
+        # Multiple colons without brackets denotes bare IPv6 address like ::1
+        return header.lower()
+    return header.lower()
+
+
 class HostAllowlistMiddleware(BaseHTTPMiddleware):
     """Enforces strict Host header allowlist to prevent DNS-rebinding attacks."""
 
@@ -47,8 +68,12 @@ class HostAllowlistMiddleware(BaseHTTPMiddleware):
         self.settings = settings
         allowed: set[str] = {"localhost", "127.0.0.1", "::1", "[::1]"}
         if settings.forge_host:
+            h = settings.forge_host.lower().strip("[]")
+            allowed.add(h)
             allowed.add(settings.forge_host.lower())
         if settings.forge_public_host:
+            h = settings.forge_public_host.lower().strip("[]")
+            allowed.add(h)
             allowed.add(settings.forge_public_host.lower())
         self.allowed_hosts = allowed
 
@@ -58,10 +83,11 @@ class HostAllowlistMiddleware(BaseHTTPMiddleware):
         call_next: Callable[[Request], Awaitable[Response]],
     ) -> Response:
         host_header = request.headers.get("host", "")
-        # Strip port from Host header if present (e.g. 127.0.0.1:8080)
-        host_only = host_header.split(":")[0].strip().lower()
+        host_only = normalize_host(host_header)
 
-        if not host_only or host_only not in self.allowed_hosts:
+        if not host_only or (
+            host_only not in self.allowed_hosts and f"[{host_only}]" not in self.allowed_hosts
+        ):
             return JSONResponse(
                 status_code=400,
                 content={
@@ -87,8 +113,12 @@ class CSRFProtectionMiddleware(BaseHTTPMiddleware):
         self.settings = settings
         allowed: set[str] = {"localhost", "127.0.0.1", "::1", "[::1]"}
         if settings.forge_host:
+            h = settings.forge_host.lower().strip("[]")
+            allowed.add(h)
             allowed.add(settings.forge_host.lower())
         if settings.forge_public_host:
+            h = settings.forge_public_host.lower().strip("[]")
+            allowed.add(h)
             allowed.add(settings.forge_public_host.lower())
         self.allowed_hosts = allowed
 
@@ -118,8 +148,11 @@ class CSRFProtectionMiddleware(BaseHTTPMiddleware):
         origin = request.headers.get("origin")
         if origin:
             parsed = urlparse(origin)
-            origin_host = (parsed.hostname or "").lower()
-            if origin_host not in self.allowed_hosts:
+            origin_host = (parsed.hostname or "").lower().strip("[]")
+            if (
+                origin_host not in self.allowed_hosts
+                and f"[{origin_host}]" not in self.allowed_hosts
+            ):
                 return JSONResponse(
                     status_code=403,
                     content={

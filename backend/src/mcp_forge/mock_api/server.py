@@ -85,8 +85,17 @@ class MockServer:
         # Start server in background task
         self._task = asyncio.create_task(self.server.serve())
 
-        # Wait until server has started and bound port
+        # Wait until server has started and bound port (with timeout and crash check)
+        loop = asyncio.get_running_loop()
+        start_time = loop.time()
+        timeout = 10.0
         while not self.server.started:
+            if self._task.done():
+                await self._task
+                raise RuntimeError("MockServer task exited unexpectedly before starting.")
+            if loop.time() - start_time > timeout:
+                await self.stop()
+                raise TimeoutError("MockServer failed to start within timeout.")
             await asyncio.sleep(0.02)
 
         # Extract actual bound port

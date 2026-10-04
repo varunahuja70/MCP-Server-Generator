@@ -15,8 +15,8 @@ MCP Forge is a security-focused tool designed to safely generate Model Context P
 
 Please **DO NOT** report security vulnerabilities through public GitHub issues or discussions.
 
-Instead, please report security vulnerabilities privately via GitHub Security Advisories or by emailing:
-`security@mcp-forge.dev` (or the maintainer's contact in the repository metadata).
+Instead, please report security vulnerabilities privately via GitHub Security Advisories at:
+https://github.com/varunahuja70/MCP-Server-Generator/security/advisories/new
 
 ### What to Include in Your Report
 To help us investigate and patch the issue quickly, please provide:

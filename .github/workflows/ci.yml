@@ -81,6 +81,11 @@ jobs:
           cd frontend
           pnpm test
 
+      - name: Production Build
+        run: |
+          cd frontend
+          pnpm build
+
       - name: Security Audit (pnpm audit)
         run: |
           cd frontend

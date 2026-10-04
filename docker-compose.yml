@@ -13,7 +13,7 @@ services:
       - FORGE_MODE=exposed
       - FORGE_HOST=0.0.0.0
       - FORGE_PORT=8080
-      - FORGE_ACCESS_TOKEN=forge-production-secure-token-32chars
+      - FORGE_ACCESS_TOKEN=${FORGE_ACCESS_TOKEN:?FORGE_ACCESS_TOKEN must be set in exposed mode (minimum 16 characters)}
       - FORGE_DATA_DIR=/app/data
       - PLAYGROUND_ENABLED=false
     healthcheck:
