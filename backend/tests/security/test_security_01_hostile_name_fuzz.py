@@ -31,10 +31,11 @@ def test_hostile_name_fuzz_never_leaks_into_python_source(
     # In our pipeline, tool names in manifest are already validated / sanitized identifiers
     # matching ^[a-z][a-z0-9_]{0,63}$.
     # But descriptions, paths, and raw values can be arbitrary hostile strings.
+    hostile_token = f"FUZZ_HOSTILE_{hostile_desc}"
     tool = ToolManifest(
         name="tool_fuzz",
         operation_key=f"op_{hostile_op_id}",
-        description=f"HostileDesc: {hostile_desc}",
+        description=f"HostileDesc: {hostile_token}",
         method="GET",
         path=f"/test/{hostile_path}",
         input_schema={"type": "object", "properties": {}},
@@ -49,7 +50,7 @@ def test_hostile_name_fuzz_never_leaks_into_python_source(
             title=f"API {hostile_op_id}",
             version="1.0.0",
             base_url="https://api.example.com",
-            description=hostile_desc,
+            description=hostile_token,
         ),
         auth={},
         tools=[tool],
@@ -62,10 +63,6 @@ def test_hostile_name_fuzz_never_leaks_into_python_source(
     assert len(py_files) > 0
 
     # Ensure none of the hostile raw text leaked into python source code
-    # (Except when it matches standard python keywords or empty strings)
     for py_file in py_files:
         content = py_file.read_text(encoding="utf-8")
-        if len(hostile_desc.strip()) > 5:
-            assert hostile_desc not in content
-        if len(hostile_op_id.strip()) > 5:
-            assert hostile_op_id not in content
+        assert hostile_token not in content

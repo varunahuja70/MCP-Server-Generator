@@ -156,8 +156,28 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         }
 
     # Register API routers
-    from mcp_forge.api.routes import playground_router
+    from mcp_forge.api.routes import (
+        auth_router,
+        builds_router,
+        operations_router,
+        playground_router,
+        project_builds_router,
+        projects_router,
+        review_router,
+        samples_router,
+        settings_router,
+        specs_router,
+    )
 
+    app.include_router(auth_router)
+    app.include_router(samples_router)
+    app.include_router(projects_router)
+    app.include_router(specs_router)
+    app.include_router(operations_router)
+    app.include_router(settings_router)
+    app.include_router(review_router)
+    app.include_router(project_builds_router)
+    app.include_router(builds_router)
     app.include_router(playground_router)
 
     return app

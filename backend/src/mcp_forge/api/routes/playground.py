@@ -10,10 +10,13 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from mcp_forge.api.deps import require_auth
 from mcp_forge.db.session import get_db_session
 from mcp_forge.playground.manager import get_session_manager
 
-router = APIRouter(prefix="/api/playground", tags=["Playground"])
+router = APIRouter(
+    prefix="/api/playground", tags=["Playground"], dependencies=[Depends(require_auth)]
+)
 
 
 class CreateSessionRequest(BaseModel):
