@@ -1,6 +1,7 @@
 {
   "name": "mcp-forge-frontend",
   "version": "0.1.0",
+  "packageManager": "pnpm@10.17.1",
   "private": true,
   "scripts": {
     "dev": "next dev",
