@@ -1,0 +1,148 @@
+{
+  "openapi": "3.0.1",
+  "info": {
+    "title": "Stripe API Subset",
+    "description": "Representative OpenAPI 3.0 specification for customer and payment charges.",
+    "version": "2026-08-01"
+  },
+  "servers": [
+    {
+      "url": "https://api.stripe.com"
+    }
+  ],
+  "paths": {
+    "/v1/customers": {
+      "get": {
+        "summary": "List all customers",
+        "description": "Returns a list of your customers.",
+        "operationId": "getCustomers",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 10
+            }
+          },
+          {
+            "name": "email",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "object": { "type": "string", "example": "list" },
+                    "data": {
+                      "type": "array",
+                      "items": { "$ref": "#/components/schemas/Customer" }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Create a customer",
+        "description": "Creates a new customer object.",
+        "operationId": "postCustomers",
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "email": { "type": "string" },
+                  "name": { "type": "string" },
+                  "phone": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful customer creation",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Customer" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/charges": {
+      "get": {
+        "summary": "List all charges",
+        "description": "Returns a list of charges you've previously created.",
+        "operationId": "getCharges",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": { "type": "integer", "default": 10 }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": { "$ref": "#/components/schemas/Charge" }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Customer": {
+        "type": "object",
+        "required": ["id", "object"],
+        "properties": {
+          "id": { "type": "string" },
+          "object": { "type": "string" },
+          "name": { "type": "string" },
+          "email": { "type": "string" },
+          "created": { "type": "integer" }
+        }
+      },
+      "Charge": {
+        "type": "object",
+        "required": ["id", "amount", "currency"],
+        "properties": {
+          "id": { "type": "string" },
+          "amount": { "type": "integer" },
+          "currency": { "type": "string" },
+          "paid": { "type": "boolean" },
+          "status": { "type": "string" }
+        }
+      }
+    }
+  }
+}

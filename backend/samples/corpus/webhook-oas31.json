@@ -1,0 +1,107 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Webhook & Event Subscriptions API",
+    "description": "Demonstrates OpenAPI 3.1 webhooks and JSON Schema 2020-12 multi-type representations.",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/subscriptions": {
+      "get": {
+        "summary": "List active webhook subscriptions",
+        "operationId": "listSubscriptions",
+        "responses": {
+          "200": {
+            "description": "Array of subscriptions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Subscription"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Create subscription",
+        "operationId": "createSubscription",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubscriptionInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created subscription",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Subscription"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "webhooks": {
+    "orderCreated": {
+      "post": {
+        "summary": "Triggered when order is created",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "order_id": { "type": ["string", "integer"] },
+                  "status": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Receipt confirmed"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Subscription": {
+        "type": "object",
+        "required": ["id", "target_url"],
+        "properties": {
+          "id": { "type": "string" },
+          "target_url": { "type": "string" },
+          "events": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "active": { "type": ["boolean", "null"] }
+        }
+      },
+      "SubscriptionInput": {
+        "type": "object",
+        "required": ["target_url"],
+        "properties": {
+          "target_url": { "type": "string" },
+          "secret": { "type": ["string", "null"] }
+        }
+      }
+    }
+  }
+}
