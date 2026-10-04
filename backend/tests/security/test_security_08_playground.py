@@ -204,3 +204,40 @@ async def test_session_manager_ownership_enforcement(
         # Double stop is safe and idempotent
         await manager.stop_session(session, s.id, caller_principal="user_alice")
         assert manager.active_count == 0
+
+
+def test_sandbox_launcher_stderr_draining(tmp_path: Path) -> None:
+    """SandboxLauncher background thread continuously drains stderr into bounded ring buffer."""
+    server_dir = tmp_path / "dummy_server"
+    server_dir.mkdir()
+    # Write a script that emits to stderr
+    (server_dir / "server.py").write_text(
+        "import sys\nfor i in range(5):\n    sys.stderr.write(f'log line {i}\\n')\nsys.stderr.flush()\n",
+        encoding="utf-8",
+    )
+
+    launcher = SandboxLauncher(server_dir=server_dir)
+    proc = launcher.start()
+    proc.wait(timeout=5.0)
+
+    # Let thread drain
+    if launcher._drain_thread:
+        launcher._drain_thread.join(timeout=2.0)
+
+    assert len(launcher.stderr_lines) > 0
+    assert any("log line" in line for line in launcher.stderr_lines)
+    launcher.terminate()
+    assert launcher.temp_dir is None
+
+
+def test_sandbox_launcher_missing_server_cleanup(tmp_path: Path) -> None:
+    """Missing server.py raises FileNotFoundError without leaving orphaned directories."""
+    empty_dir = tmp_path / "empty_server"
+    empty_dir.mkdir()
+    launcher = SandboxLauncher(server_dir=empty_dir)
+
+    with pytest.raises(FileNotFoundError):
+        launcher.start()
+
+    launcher.terminate()
+    assert launcher.temp_dir is None

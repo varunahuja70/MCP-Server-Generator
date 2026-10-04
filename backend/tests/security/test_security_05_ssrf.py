@@ -189,3 +189,64 @@ def test_ssrf_allow_private_preserves_scheme_and_credential_validation() -> None
     # Valid loopback target allowed when explicitly permitted
     valid_private = validate_url_ssrf("http://127.0.0.1:8000/spec.yaml", allow_private=True)
     assert valid_private == "http://127.0.0.1:8000/spec.yaml"
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_safe_fetch_enforces_max_bytes_on_streaming() -> None:
+    """safe_fetch_url must abort and reject streams that exceed max_bytes."""
+    respx.get("https://api.example.com/huge.json").mock(
+        return_value=Response(200, content=b"X" * 10000)
+    )
+
+    with pytest.raises(SSRFBlockedError, match="exceeds limit"):
+        await safe_fetch_url("https://api.example.com/huge.json", max_bytes=500)
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_safe_fetch_handles_malformed_content_length_gracefully() -> None:
+    """safe_fetch_url must not crash on malformed Content-Length headers."""
+    respx.get("https://api.example.com/malformed-cl.json").mock(
+        return_value=Response(
+            200,
+            content=b'{"ok": true}',
+            headers={"Content-Length": "invalid-int-value", "Content-Type": "application/json"},
+        )
+    )
+
+    data, ct = await safe_fetch_url("https://api.example.com/malformed-cl.json", max_bytes=5000)
+    assert data == b'{"ok": true}'
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_safe_fetch_handles_misleading_content_length() -> None:
+    """Server lying with a small Content-Length must be stopped by the streaming chunk counter."""
+    respx.get("https://api.example.com/misleading.json").mock(
+        return_value=Response(
+            200,
+            content=b"A" * 5000,
+            headers={"Content-Length": "10"},
+        )
+    )
+
+    with pytest.raises(SSRFBlockedError, match="size limit"):
+        await safe_fetch_url("https://api.example.com/misleading.json", max_bytes=1000)
+
+
+@pytest.mark.asyncio
+async def test_ssrf_protected_network_backend_blocks_private_destinations() -> None:
+    """SSRFProtectedNetworkBackend must block TCP connections to private and loopback targets."""
+    from mcp_forge.core.security.ssrf import SSRFProtectedNetworkBackend
+
+    backend = SSRFProtectedNetworkBackend(allow_private=False)
+
+    with pytest.raises(SSRFBlockedError):
+        await backend.connect_tcp("127.0.0.1", 80)
+
+    with pytest.raises(SSRFBlockedError):
+        await backend.connect_tcp("169.254.169.254", 80)
+
+    with pytest.raises(SSRFBlockedError):
+        await backend.connect_tcp("10.0.0.1", 80)

@@ -2,8 +2,10 @@
 
 import ipaddress
 import socket
+from typing import Any
 from urllib.parse import urlparse
 
+import httpcore
 import httpx
 
 from mcp_forge.errors import SSRFBlockedError
@@ -141,6 +143,87 @@ def validate_url_ssrf(url: str, allow_private: bool = False) -> str:
     return url
 
 
+class SSRFProtectedNetworkBackend(httpcore.AnyIOBackend):
+    """Network backend enforcing SSRF validation and connecting directly to the validated IP.
+
+    Guarantees that the IP checked during DNS resolution is the exact IP connected to at the
+    TCP socket level, eliminating TOCTOU / DNS rebinding attacks while preserving TLS SNI and
+    hostname verification.
+    """
+
+    def __init__(self, allow_private: bool = False) -> None:
+        super().__init__()
+        self.allow_private = allow_private
+
+    async def connect_tcp(
+        self,
+        host: str,
+        port: int,
+        timeout: float | None = None,
+        local_address: str | None = None,
+        socket_options: Any = None,
+    ) -> httpcore.AsyncNetworkStream:
+        if not self.allow_private:
+            # 1. Numeric representations
+            numeric_ip = _try_parse_numeric_ip(host)
+            if numeric_ip and is_ip_blocked(numeric_ip):
+                raise SSRFBlockedError(
+                    f"Access to blocked network address '{numeric_ip}' ({host}) is forbidden."
+                )
+
+            # 2. Literal IP address
+            try:
+                literal_ip = ipaddress.ip_address(host.strip("[]"))
+                if is_ip_blocked(literal_ip):
+                    raise SSRFBlockedError(
+                        f"Access to blocked IP address '{literal_ip}' is forbidden."
+                    )
+                return await super().connect_tcp(
+                    host,
+                    port,
+                    timeout=timeout,
+                    local_address=local_address,
+                    socket_options=socket_options,
+                )
+            except ValueError:
+                pass
+
+            # 3. Resolve DNS hostname and check all IP addresses
+            try:
+                resolved_ips = socket.getaddrinfo(host, port, socket.AF_UNSPEC, socket.SOCK_STREAM)
+            except socket.gaierror as e:
+                raise SSRFBlockedError(f"DNS resolution failed for host '{host}'.") from e
+
+            if not resolved_ips:
+                raise SSRFBlockedError(f"No IP addresses resolved for host '{host}'.")
+
+            chosen_ip: str | None = None
+            for item in resolved_ips:
+                ip_str = str(item[4][0])
+                ip_obj = ipaddress.ip_address(ip_str)
+                if is_ip_blocked(ip_obj):
+                    raise SSRFBlockedError(f"Host '{host}' resolved to blocked IP '{ip_str}'.")
+                if chosen_ip is None:
+                    chosen_ip = ip_str
+
+            target_connect_host = chosen_ip if chosen_ip else host
+            return await super().connect_tcp(
+                target_connect_host,
+                port,
+                timeout=timeout,
+                local_address=local_address,
+                socket_options=socket_options,
+            )
+
+        return await super().connect_tcp(
+            host,
+            port,
+            timeout=timeout,
+            local_address=local_address,
+            socket_options=socket_options,
+        )
+
+
 async def safe_fetch_url(
     url: str,
     max_redirects: int = 3,
@@ -148,7 +231,9 @@ async def safe_fetch_url(
     timeout_s: float = 10.0,
     max_bytes: int = 10 * 1024 * 1024,
 ) -> tuple[bytes, str]:
-    """Fetch URL with SSRF checks on initial URL and on all redirect hops.
+    """Fetch URL with SSRF checks on initial URL, on all redirect hops, and at TCP socket level.
+
+    Streams response chunks to enforce max_bytes before full buffering in memory.
 
     Returns:
         (content_bytes, content_type_header)
@@ -158,40 +243,69 @@ async def safe_fetch_url(
 
     headers = {"User-Agent": FORGE_USER_AGENT}
 
-    async with httpx.AsyncClient(timeout=timeout_s, follow_redirects=False) as client:
+    pool = httpcore.AsyncConnectionPool(
+        network_backend=SSRFProtectedNetworkBackend(allow_private=allow_private)
+    )
+    transport = httpx.AsyncHTTPTransport()
+    transport._pool = pool
+
+    async with httpx.AsyncClient(
+        transport=transport, timeout=timeout_s, follow_redirects=False
+    ) as client:
         while True:
-            response = await client.get(current_url, headers=headers)
+            async with client.stream("GET", current_url, headers=headers) as response:
+                # Handle redirects manually to re-verify SSRF on each hop
+                if response.is_redirect:
+                    redirect_count += 1
+                    if redirect_count > max_redirects:
+                        raise SSRFBlockedError(f"Maximum redirects ({max_redirects}) exceeded.")
 
-            # Handle redirects manually to re-verify SSRF on each hop
-            if response.is_redirect:
-                redirect_count += 1
-                if redirect_count > max_redirects:
-                    raise SSRFBlockedError(f"Maximum redirects ({max_redirects}) exceeded.")
+                    location = response.headers.get("Location")
+                    if not location:
+                        raise SSRFBlockedError("Redirect response missing Location header.")
 
-                location = response.headers.get("Location")
-                if not location:
-                    raise SSRFBlockedError("Redirect response missing Location header.")
+                    # Resolve relative redirect URLs against current URL
+                    next_url = str(response.url.join(location))
+                    current_url = validate_url_ssrf(next_url, allow_private=allow_private)
 
-                # Resolve relative redirect URLs against current URL
-                next_url = str(response.url.join(location))
-                current_url = validate_url_ssrf(next_url, allow_private=allow_private)
-                continue
+                    # Strip credentials on cross-origin redirect
+                    orig_parsed = urlparse(str(response.url))
+                    next_parsed = urlparse(next_url)
+                    if orig_parsed.netloc.lower() != next_parsed.netloc.lower():
+                        headers = {
+                            k: v
+                            for k, v in headers.items()
+                            if k.lower() not in ("authorization", "cookie")
+                        }
+                    continue
 
-            # Check response status
-            if response.status_code >= 400:
-                raise SSRFBlockedError(f"Remote server returned HTTP {response.status_code}.")
+                # Check response status
+                if response.status_code >= 400:
+                    raise SSRFBlockedError(f"Remote server returned HTTP {response.status_code}.")
 
-            # Check content length before reading
-            content_length = response.headers.get("content-length")
-            if content_length and int(content_length) > max_bytes:
-                raise SSRFBlockedError(
-                    f"Remote content size ({content_length} bytes) exceeds limit ({max_bytes} bytes)."
-                )
+                # Safely inspect content length header before streaming
+                content_length = response.headers.get("content-length")
+                if content_length:
+                    try:
+                        cl_bytes = int(content_length.strip())
+                        if cl_bytes > max_bytes:
+                            raise SSRFBlockedError(
+                                f"Remote content size ({cl_bytes} bytes) exceeds limit ({max_bytes} bytes)."
+                            )
+                    except (ValueError, TypeError):
+                        pass
 
-            # Read content with byte limit enforcement
-            body = response.content
-            if len(body) > max_bytes:
-                raise SSRFBlockedError(f"Remote response body exceeded limit ({max_bytes} bytes).")
+                # Stream response content with strict chunk-by-chunk byte limit enforcement
+                body_chunks: list[bytes] = []
+                total_bytes = 0
+                async for chunk in response.aiter_bytes(chunk_size=65536):
+                    total_bytes += len(chunk)
+                    if total_bytes > max_bytes:
+                        raise SSRFBlockedError(
+                            f"Remote response exceeded size limit of {max_bytes} bytes."
+                        )
+                    body_chunks.append(chunk)
 
-            content_type = response.headers.get("content-type", "")
-            return body, content_type
+                body = b"".join(body_chunks)
+                content_type = response.headers.get("content-type", "")
+                return body, content_type

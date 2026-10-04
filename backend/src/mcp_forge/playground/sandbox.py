@@ -1,7 +1,10 @@
 """Process-isolated playground subprocess launcher with scrubbed environment and process group management.
 
-Note: Provides process-level isolation, isolated temporary scratchpaths, and environment
-scrubbing. This is not hardware/container-level OS virtualization.
+Architecture & Isolation Note:
+Provides process-level isolation, isolated temporary scratch paths, bounded stderr output capture,
+and process-tree termination. This is NOT hardware, container, or hypervisor virtualization (such as
+Docker, Firecracker, or gVisor). For multi-tenant production deployments, running MCP Forge within
+hardened container environments with non-root execution and drop-capability profiles is recommended.
 """
 
 import os
@@ -10,6 +13,8 @@ import signal
 import subprocess
 import sys
 import tempfile
+import threading
+from collections import deque
 from pathlib import Path
 
 
@@ -27,6 +32,8 @@ class SandboxLauncher:
         self.base_url_override = base_url_override
         self.temp_dir: Path | None = None
         self.process: subprocess.Popen[str] | None = None
+        self.stderr_lines: deque[str] = deque(maxlen=1000)
+        self._drain_thread: threading.Thread | None = None
 
     def build_scrubbed_env(self) -> dict[str, str]:
         """Construct a minimal scrubbed environment containing only required safe vars and user credentials."""
@@ -116,31 +123,56 @@ class SandboxLauncher:
             creationflags=creationflags,
             preexec_fn=preexec_fn,
         )
+
+        # Start background thread to drain stderr continuously to prevent pipe buffer deadlocks
+        if self.process.stderr:
+            proc_stderr = self.process.stderr
+
+            def _drain_stderr() -> None:
+                try:
+                    for line in iter(proc_stderr.readline, ""):
+                        self.stderr_lines.append(line.rstrip())
+                except Exception:  # noqa: S110
+                    pass
+
+            self._drain_thread = threading.Thread(target=_drain_stderr, daemon=True)
+            self._drain_thread.start()
+
         return self.process
 
     def terminate(self) -> None:
         """Kill entire process group and cleanup scratch temp directory."""
-        if self.process and self.process.poll() is None:
-            try:
-                if sys.platform == "win32":
-                    # Send CTRL_BREAK_EVENT or force terminate
+        if self.process:
+            proc = self.process
+            if proc.poll() is None:
+                try:
+                    if sys.platform == "win32":
+                        # Send CTRL_BREAK_EVENT or force terminate process tree
+                        try:
+                            ctrl_break = getattr(signal, "CTRL_BREAK_EVENT", None)
+                            if ctrl_break is not None:
+                                proc.send_signal(ctrl_break)
+                        except Exception:  # noqa: S110
+                            pass
+                        proc.kill()
+                    else:
+                        try:
+                            os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+                        except Exception:  # noqa: S110
+                            proc.kill()
+                    proc.wait(timeout=2.0)
+                except Exception:  # noqa: S110
+                    pass
+
+            # Close standard pipes cleanly
+            for pipe in (proc.stdin, proc.stdout, proc.stderr):
+                if pipe:
                     try:
-                        ctrl_break = getattr(signal, "CTRL_BREAK_EVENT", None)
-                        if ctrl_break is not None:
-                            self.process.send_signal(ctrl_break)
+                        pipe.close()
                     except Exception:  # noqa: S110
                         pass
-                    self.process.kill()
-                else:
-                    try:
-                        os.killpg(os.getpgid(self.process.pid), signal.SIGKILL)
-                    except Exception:  # noqa: S110
-                        self.process.kill()
-                self.process.wait(timeout=2.0)
-            except Exception:  # noqa: S110
-                pass
-            finally:
-                self.process = None
+
+            self.process = None
 
         # Clean up temp directory
         if self.temp_dir and self.temp_dir.exists():
