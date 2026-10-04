@@ -41,6 +41,40 @@ class BuildPipelineResult(BaseModel):
     error_message_safe: str | None = None
 
 
+def get_build_dir(data_dir: Path, slug: str, build_no: int) -> Path:
+    """Return canonical directory for a build's artifacts."""
+    return data_dir / "builds" / slug / f"build_{build_no}"
+
+
+def get_server_dir(data_dir: Path, slug: str, build_no: int) -> Path:
+    """Return canonical directory for the generated server project code."""
+    return get_build_dir(data_dir, slug, build_no) / f"{slug}-mcp"
+
+
+def get_zip_path(data_dir: Path, slug: str, build_no: int) -> Path:
+    """Return canonical archive zip path for a build."""
+    return get_build_dir(data_dir, slug, build_no) / f"{slug}-mcp.zip"
+
+
+def resolve_build_paths(build: Build, slug: str) -> tuple[Path, Path]:
+    """Canonically resolve (server_dir, zip_path) for an existing build."""
+    if build.artifact_path:
+        zip_path = Path(build.artifact_path)
+        server_dir = zip_path.parent / f"{slug}-mcp"
+        if not server_dir.exists():
+            candidate = zip_path.with_suffix("")
+            if candidate.exists():
+                server_dir = candidate
+            elif (zip_path.parent / "server").exists():
+                server_dir = zip_path.parent / "server"
+        return server_dir, zip_path
+
+    settings = get_settings()
+    server_dir = get_server_dir(settings.forge_data_dir, slug, build.build_no)
+    zip_path = get_zip_path(settings.forge_data_dir, slug, build.build_no)
+    return server_dir, zip_path
+
+
 def generate_client_snippets(
     project_slug: str,
     server_dir: Path | str,
@@ -168,10 +202,8 @@ async def create_build_for_project(
     res_no = await session.execute(stmt_no)
     next_build_no = res_no.scalar_one() + 1
 
-    # 4. Setup directories
-    build_dir = settings.forge_data_dir / "builds" / project.slug / f"build_{next_build_no}"
-    dist_dir = build_dir / f"{project.slug}-mcp"
-    zip_path = build_dir / f"{project.slug}-mcp.zip"
+    dist_dir = get_server_dir(settings.forge_data_dir, project.slug, next_build_no)
+    zip_path = get_zip_path(settings.forge_data_dir, project.slug, next_build_no)
 
     # Create Build record in database
     build = Build(

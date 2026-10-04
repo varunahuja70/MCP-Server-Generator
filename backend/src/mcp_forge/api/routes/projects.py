@@ -211,7 +211,11 @@ async def delete_project(
             details={"expected": project.slug, "provided": body.confirm_slug},
         )
 
-    # Clean up project build directory on disk if it exists
+    # Clean up project build artifacts on disk if they exist
+    builds_dir = settings.forge_data_dir / "builds" / project.slug
+    if builds_dir.exists():
+        shutil.rmtree(builds_dir, ignore_errors=True)
+
     project_dir = settings.forge_data_dir / "projects" / project.slug
     if project_dir.exists():
         shutil.rmtree(project_dir, ignore_errors=True)

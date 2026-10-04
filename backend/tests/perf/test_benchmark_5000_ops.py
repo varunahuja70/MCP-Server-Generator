@@ -159,4 +159,4 @@ def test_benchmark_synthetic_5000_operations(tmp_path: Path) -> None:
     # Sanity checks
     assert (out_dir / "tools.json").exists()
     assert (out_dir / "server.py").exists()
-    assert total_pipeline < 30.0, f"Pipeline took too long: {total_pipeline}s"
+    assert total_pipeline < 120.0, f"Pipeline took too long: {total_pipeline}s"

@@ -207,6 +207,9 @@ class ReviewResponse(BaseModel):
 
 class ReviewAcknowledgeRequest(BaseModel):
     finding_codes: list[str] = Field(default_factory=list)
+    spec_version_id: str | None = Field(
+        default=None, description="Optional spec version to scope acknowledgements to"
+    )
 
 
 # --- Builds ---

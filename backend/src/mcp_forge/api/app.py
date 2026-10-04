@@ -134,14 +134,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             probe_file.write_text("ok", encoding="utf-8")
             probe_file.unlink(missing_ok=True)
             return JSONResponse(status_code=200, content={"status": "ready"})
-        except Exception as e:
+        except Exception:
             return JSONResponse(
                 status_code=503,
                 content={
                     "error": {
                         "code": "NOT_READY",
                         "message": "Storage directory is not writable.",
-                        "details": {"error": str(e)},
+                        "details": {},
                     }
                 },
             )

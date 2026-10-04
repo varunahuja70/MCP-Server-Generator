@@ -6,6 +6,7 @@ from typing import Any
 from mcp_forge.core.security.redact import redact_text
 
 MAX_TRACE_MESSAGE_CHARS = 100_000
+MAX_SESSION_TRACE_EVENTS = 1_000
 
 
 class TraceRecorder:
@@ -48,6 +49,9 @@ class TraceRecorder:
             "timestamp": time.time(),
         }
 
+        # Keep events list bounded
+        if len(self.events) >= MAX_SESSION_TRACE_EVENTS:
+            self.events.pop(0)
         self.events.append(event)
 
         # Notify any active SSE subscribers

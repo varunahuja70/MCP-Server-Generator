@@ -373,7 +373,108 @@ async def test_security_10_exposed_mode_auth(
         assert "forge_session" in res_login_ok.cookies
 
         # Subsequent requests using the session cookie succeed without Authorization header
+        session_cookie = res_login_ok.cookies["forge_session"]
         res_cookie_auth = await client.get(
-            "/api/projects", headers={"Cookie": f"forge_session={valid_token}"}
+            "/api/projects", headers={"Cookie": f"forge_session={session_cookie}"}
         )
         assert res_cookie_auth.status_code == 200
+
+        # Auth status confirms authentication via cookie
+        res_status = await client.get(
+            "/api/auth/status", headers={"Cookie": f"forge_session={session_cookie}"}
+        )
+        assert res_status.status_code == 200
+        assert res_status.json()["authenticated"] is True
+
+        # Logout revokes session cookie
+        res_logout = await client.post(
+            "/api/auth/logout", headers={"Cookie": f"forge_session={session_cookie}"}
+        )
+        assert res_logout.status_code == 200
+
+        # Post-logout request with old cookie fails with 401
+        res_after_logout = await client.get(
+            "/api/projects", headers={"Cookie": f"forge_session={session_cookie}"}
+        )
+        assert res_after_logout.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_project_delete_cleans_build_artifacts_on_disk(
+    api_env: tuple[AsyncClient, Settings],
+) -> None:
+    client, settings = api_env
+
+    # Create project and generate build
+    res_proj = await client.post("/api/samples/create-project", json={"sample_id": "bookshop"})
+    proj_id = res_proj.json()["id"]
+    slug = res_proj.json()["slug"]
+
+    # Trigger build
+    res_b = await client.post(f"/api/projects/{proj_id}/builds")
+    assert res_b.status_code == 200
+
+    builds_on_disk = settings.forge_data_dir / "builds" / slug
+    assert builds_on_disk.exists(), "Build artifacts directory should exist after build"
+
+    # Delete project with confirmation
+    res_del = await client.request(
+        "DELETE", f"/api/projects/{proj_id}", json={"confirm_slug": slug}
+    )
+    assert res_del.status_code == 200
+
+    # Ensure build artifacts directory was cleaned up
+    assert not builds_on_disk.exists(), (
+        "Build artifacts on disk should be removed upon project deletion"
+    )
+
+
+@pytest.mark.asyncio
+async def test_review_scoping_to_spec_version(
+    api_env: tuple[AsyncClient, Settings],
+) -> None:
+    client, _ = api_env
+
+    # Create empty project
+    res_proj = await client.post(
+        "/api/projects", json={"name": "Review Scope Test", "slug": "scope-test"}
+    )
+    proj_id = res_proj.json()["id"]
+
+    # Add v1 spec
+    spec_v1 = """openapi: "3.0.0"
+info:
+  title: "API V1"
+  version: "1.0.0"
+paths: {}
+"""
+    res_s1 = await client.post(
+        f"/api/projects/{proj_id}/specs", json={"source_type": "paste", "content": spec_v1}
+    )
+    assert res_s1.status_code == 200
+    v1_id = res_s1.json()["id"]
+    assert v1_id is not None
+
+    # Add v2 spec
+    spec_v2 = """openapi: "3.0.0"
+info:
+  title: "API V2"
+  version: "2.0.0"
+paths: {}
+"""
+    res_s2 = await client.post(
+        f"/api/projects/{proj_id}/specs", json={"source_type": "paste", "content": spec_v2}
+    )
+    assert res_s2.status_code == 200
+    v2_id = res_s2.json()["id"]
+
+    # Review project (targets latest, which is v2)
+    res_rev = await client.post(f"/api/projects/{proj_id}/review")
+    assert res_rev.status_code == 200
+
+    # Acknowledging with explicit spec_version_id=v2_id scopes to v2 only
+    res_ack = await client.post(
+        f"/api/projects/{proj_id}/review/acknowledge",
+        json={"finding_codes": ["SPEC-001"], "spec_version_id": v2_id},
+    )
+    assert res_ack.status_code == 200

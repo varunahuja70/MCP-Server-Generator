@@ -46,6 +46,7 @@ async def get_db(request: Request) -> AsyncGenerator[AsyncSession]:
 async def create_session(
     body: CreateSessionRequest,
     db: AsyncSession = Depends(get_db),
+    principal: str = Depends(require_auth),
 ) -> dict[str, Any]:
     """Launch a new isolated playground session."""
     manager = get_session_manager()
@@ -54,6 +55,7 @@ async def create_session(
         build_id=body.build_id,
         target=body.target,
         user_env_vars=body.env_vars,
+        owner_principal=principal,
     )
     return {
         "id": session_model.id,
@@ -66,10 +68,13 @@ async def create_session(
 
 
 @router.get("/sessions/{session_id}")
-async def get_session(session_id: str) -> dict[str, Any]:
+async def get_session(
+    session_id: str,
+    principal: str = Depends(require_auth),
+) -> dict[str, Any]:
     """Get active session status and info."""
     manager = get_session_manager()
-    active = manager.get_session(session_id)
+    active = manager.get_session(session_id, caller_principal=principal)
     return {
         "id": active.session_id,
         "build_id": active.build_id,
@@ -81,10 +86,13 @@ async def get_session(session_id: str) -> dict[str, Any]:
 
 
 @router.get("/sessions/{session_id}/tools")
-async def list_session_tools(session_id: str) -> dict[str, Any]:
+async def list_session_tools(
+    session_id: str,
+    principal: str = Depends(require_auth),
+) -> dict[str, Any]:
     """List available tools exposed by the session's server."""
     manager = get_session_manager()
-    active = manager.get_session(session_id)
+    active = manager.get_session(session_id, caller_principal=principal)
     tools = await active.client.list_tools()
     return {"tools": tools}
 
@@ -93,10 +101,11 @@ async def list_session_tools(session_id: str) -> dict[str, Any]:
 async def call_session_tool(
     session_id: str,
     body: ToolCallRequest,
+    principal: str = Depends(require_auth),
 ) -> dict[str, Any]:
     """Invoke an MCP tool through the playground session."""
     manager = get_session_manager()
-    active = manager.get_session(session_id)
+    active = manager.get_session(session_id, caller_principal=principal)
     result = await active.client.call_tool(
         name=body.name,
         arguments=body.arguments,
@@ -109,10 +118,11 @@ async def call_session_tool(
 async def stream_session_trace(
     session_id: str,
     request: Request,
+    principal: str = Depends(require_auth),
 ) -> StreamingResponse:
     """Stream real-time protocol trace events via Server-Sent Events (SSE)."""
     manager = get_session_manager()
-    active = manager.get_session(session_id)
+    active = manager.get_session(session_id, caller_principal=principal)
 
     async def event_generator() -> Any:
         # First yield past recorded events
@@ -148,8 +158,14 @@ async def stream_session_trace(
 async def delete_session(
     session_id: str,
     db: AsyncSession = Depends(get_db),
+    principal: str = Depends(require_auth),
 ) -> dict[str, Any]:
     """Stop and terminate an active playground session."""
     manager = get_session_manager()
-    await manager.stop_session(db, session_id, exit_info="User requested stop")
+    await manager.stop_session(
+        db,
+        session_id,
+        exit_info="User requested stop",
+        caller_principal=principal,
+    )
     return {"status": "stopped", "session_id": session_id}

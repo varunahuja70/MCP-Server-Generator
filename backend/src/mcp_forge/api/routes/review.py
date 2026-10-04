@@ -91,8 +91,23 @@ async def acknowledge_findings(
     if not project:
         raise NotFoundError(f"Project with ID '{project_id}' not found.")
 
+    target_spec_id = body.spec_version_id
+    if not target_spec_id:
+        stmt_spec = (
+            select(SpecVersion.id)
+            .where(SpecVersion.project_id == project_id)
+            .order_by(SpecVersion.version_no.desc())
+            .limit(1)
+        )
+        res_spec = await db.execute(stmt_spec)
+        target_spec_id = res_spec.scalar_one_or_none()
+
+    if not target_spec_id:
+        return {"status": "acknowledged", "acknowledged_count": 0}
+
     stmt = select(ReviewFindingModel).where(
         ReviewFindingModel.project_id == project_id,
+        ReviewFindingModel.spec_version_id == target_spec_id,
         ReviewFindingModel.code.in_(body.finding_codes),
     )
     res = await db.execute(stmt)

@@ -5,12 +5,12 @@ import json
 import os
 from pathlib import Path
 import sys
+import inspect
 from typing import Any
 
 from mcp.server.mcpserver import MCPServer
 from mcp.server.transport_security import TransportSecuritySettings
 from mcp.types import ToolAnnotations
-from pydantic import BaseModel, ConfigDict
 
 from runtime import (
     ApiClient,
@@ -34,18 +34,18 @@ server = MCPServer(name=server_name)
 config = RuntimeConfig.from_env(default_base_url=server_info.get("base_url", ""))
 api_client = ApiClient(config)
 
-
-class DynamicArgs(BaseModel):
-    """Pydantic model allowing arbitrary validated arguments from MCP clients."""
-
-    model_config = ConfigDict(extra="allow")
-
-    def model_dump_one_level(self) -> dict[str, Any]:
-        return self.model_dump()
+TYPE_MAP: dict[str, type] = {
+    "string": str,
+    "integer": int,
+    "number": float,
+    "boolean": bool,
+    "array": list,
+    "object": dict,
+}
 
 
 def _create_tool_handler(tool_def: dict[str, Any]) -> Any:
-    """Create a closure for dispatching an operation."""
+    """Create a closure for dispatching an operation with inspect.Signature derived from input_schema."""
     tool_name = tool_def["name"]
     tool_path = tool_def["path"]
     tool_method = tool_def["method"]
@@ -59,11 +59,14 @@ def _create_tool_handler(tool_def: dict[str, Any]) -> Any:
         if not allowed:
             return err_msg
 
+        # Filter out default None values for unset optional arguments
+        active_args = {k: v for k, v in arguments.items() if v is not None}
+
         # 2. Build HTTP request components
         final_url, query_params, headers, json_body, form_body = build_request(
             base_url=config.base_url,
             path_template=tool_path,
-            arguments=arguments,
+            arguments=active_args,
             param_locations=param_locs,
             is_flattened_body=is_flattened,
         )
@@ -94,10 +97,29 @@ def _create_tool_handler(tool_def: dict[str, Any]) -> Any:
 
     handler.__name__ = tool_name
     handler.__doc__ = tool_def.get("description", "")
+
+    # Derive standard inspect.Signature so MCPServer creates accurate public Pydantic models
+    input_schema = tool_def.get("input_schema", {})
+    properties = input_schema.get("properties", {})
+    required_set = set(input_schema.get("required", []))
+
+    sig_parameters = []
+    for prop_name, prop_spec in properties.items():
+        prop_type = TYPE_MAP.get(prop_spec.get("type", "string"), Any)
+        default_val = inspect.Parameter.empty if prop_name in required_set else prop_spec.get("default", None)
+        sig_parameters.append(
+            inspect.Parameter(
+                name=prop_name,
+                kind=inspect.Parameter.KEYWORD_ONLY,
+                default=default_val,
+                annotation=prop_type,
+            )
+        )
+    handler.__signature__ = inspect.Signature(sig_parameters)
     return handler
 
 
-# Register all tools from tools.json
+# Register all tools from tools.json using public SDK API
 for tool_def in manifest.get("tools", []):
     t_name = tool_def["name"]
     t_desc = tool_def.get("description", "")
@@ -110,11 +132,6 @@ for tool_def in manifest.get("tools", []):
         description=t_desc,
         annotations=t_annotations,
     )
-
-    # Patch schema and model validator on registered tool
-    tool_obj = server._tool_manager.get_tool(t_name)
-    tool_obj.fn_metadata.arg_model = DynamicArgs
-    tool_obj.parameters = tool_def.get("input_schema", {"type": "object", "properties": {}})
 
 
 def main() -> None:

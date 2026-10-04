@@ -84,7 +84,7 @@ class ApiClient:
         if self._client is None or self._client.is_closed:
             self._client = httpx.AsyncClient(
                 timeout=httpx.Timeout(self.config.timeout_seconds),
-                follow_redirects=True,
+                follow_redirects=False,
             )
         return self._client
 
@@ -128,15 +128,41 @@ class ApiClient:
                 log("INFO", f"Calling {m} {url} (attempt {attempt}/{max_attempts})", tool=tool_name)
                 start_time = time.perf_counter()
 
-                response = await client.request(
-                    method=m,
-                    url=url,
-                    params=query_params,
-                    headers=headers,
-                    cookies=cookies,
-                    json=json_body,
-                    data=form_body,
-                )
+                current_url = url
+                current_method = m
+                redirect_hops = 0
+                max_hops = 5
+
+                while True:
+                    response = await client.request(
+                        method=current_method,
+                        url=current_url,
+                        params=query_params if redirect_hops == 0 else None,
+                        headers=headers,
+                        cookies=cookies,
+                        json=json_body if redirect_hops == 0 else None,
+                        data=form_body if redirect_hops == 0 else None,
+                    )
+
+                    if response.is_redirect and redirect_hops < max_hops:
+                        redirect_hops += 1
+                        location = response.headers.get("location")
+                        if not location:
+                            break
+                        next_url = str(response.url.join(location))
+                        if not self.config.allow_private_targets and is_private_target(next_url):
+                            msg = f"Blocked access to private network redirect target '{next_url}'."
+                            log("ERROR", msg, tool=tool_name)
+                            return msg
+                        current_url = next_url
+                        if response.status_code in (301, 302, 303) and current_method not in (
+                            "GET",
+                            "HEAD",
+                        ):
+                            current_method = "GET"
+                        continue
+                    break
+
                 duration = time.perf_counter() - start_time
 
                 # Check if retryable status code (429 or 503)

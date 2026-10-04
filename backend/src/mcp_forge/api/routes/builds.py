@@ -22,6 +22,7 @@ from mcp_forge.services.builds import (
     generate_client_snippets,
     get_build_file_content,
     list_build_file_tree,
+    resolve_build_paths,
 )
 
 # Project builds router
@@ -123,14 +124,13 @@ async def get_files_tree(
     db: AsyncSession = Depends(get_db),
 ) -> list[dict[str, Any]]:
     """Get hierarchical file tree of generated project."""
-    build = await db.get(Build, build_id)
+    stmt = select(Build).where(Build.id == build_id).options(joinedload(Build.project))
+    res = await db.execute(stmt)
+    build = res.scalar_one_or_none()
     if not build or not build.artifact_path:
         raise NotFoundError(f"Build with ID '{build_id}' not found.")
 
-    server_dir = Path(build.artifact_path).parent / f"{Path(build.artifact_path).stem}"
-    if not server_dir.exists():
-        server_dir = Path(build.artifact_path).parent / "server"
-
+    server_dir, _ = resolve_build_paths(build, build.project.slug)
     tree = list_build_file_tree(server_dir)
     return tree
 
@@ -142,14 +142,13 @@ async def get_file_content(
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
     """Retrieve text content of a generated project file safely."""
-    build = await db.get(Build, build_id)
+    stmt = select(Build).where(Build.id == build_id).options(joinedload(Build.project))
+    res = await db.execute(stmt)
+    build = res.scalar_one_or_none()
     if not build or not build.artifact_path:
         raise NotFoundError(f"Build with ID '{build_id}' not found.")
 
-    server_dir = Path(build.artifact_path).parent / f"{Path(build.artifact_path).stem}"
-    if not server_dir.exists():
-        server_dir = Path(build.artifact_path).parent / "server"
-
+    server_dir, _ = resolve_build_paths(build, build.project.slug)
     content = get_build_file_content(server_dir, path)
     return {
         "path": path,
@@ -194,7 +193,7 @@ async def get_connect_snippets(
     if not build or not build.artifact_path:
         raise NotFoundError(f"Build with ID '{build_id}' not found.")
 
-    server_dir = Path(build.artifact_path).parent / "server"
+    server_dir, _ = resolve_build_paths(build, build.project.slug)
     snippets = generate_client_snippets(
         project_slug=build.project.slug,
         server_dir=server_dir,

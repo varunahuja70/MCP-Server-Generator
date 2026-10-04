@@ -34,6 +34,42 @@ def test_cli_samples() -> None:
     assert len(samples_data) >= 3
 
 
+def test_cli_samples_seed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    test_data = tmp_path / "data"
+    test_data.mkdir(parents=True, exist_ok=True)
+    db_file = test_data / "test_forge.sqlite3"
+    db_url = f"sqlite+aiosqlite:///{db_file.as_posix()}"
+
+    monkeypatch.setattr(
+        "mcp_forge.cli.main.Settings",
+        lambda: Settings(forge_data_dir=test_data, database_url=db_url),
+    )
+
+    # Initialize tables
+    import asyncio
+
+    from mcp_forge.db.base import Base
+    from mcp_forge.db.session import get_engine, reset_engine
+
+    async def _init_tables() -> None:
+        await reset_engine()
+        engine = get_engine(Settings(forge_data_dir=test_data, database_url=db_url))
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+
+    asyncio.run(_init_tables())
+
+    result = runner.invoke(app, ["samples", "--seed"])
+    assert result.exit_code == 0
+    assert "Successfully seeded" in result.stdout or "already seeded" in result.stdout
+
+    result_json = runner.invoke(app, ["samples", "--seed", "--json"])
+    assert result_json.exit_code == 0
+    data = json.loads(result_json.stdout)
+    assert "seeded" in data
+    assert "count" in data
+
+
 def test_cli_check_valid(tmp_path: Path) -> None:
     spec_path = SAMPLES_DIR / "bookshop.openapi.yaml"
     result = runner.invoke(app, ["check", str(spec_path)])

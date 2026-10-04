@@ -57,10 +57,10 @@ async def create_spec_version(
             raise ValidationError(
                 f"Content must be provided when source_type='{body.source_type}'."
             )
-        ref_name = (
+        source_ref = (
             body.filename or "uploaded-spec" if body.source_type == "upload" else "pasted-spec"
         )
-        ingest_res = ingest_from_text(body.content, source_ref=ref_name)
+        ingest_res = ingest_from_text(body.content, source_ref=source_ref)
     else:
         raise ValidationError(f"Unsupported source_type: '{body.source_type}'.")
 

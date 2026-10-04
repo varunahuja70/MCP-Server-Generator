@@ -126,3 +126,77 @@ async def test_session_manager_concurrency_cap_and_cleanup(
         assert manager.active_count == 1
         await manager.stop_session(session, s2.id)
         assert manager.active_count == 0
+
+
+@pytest.mark.asyncio
+async def test_session_manager_ownership_enforcement(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Verify session manager enforces caller principal ownership in exposed mode."""
+    from mcp_forge.errors import ForbiddenError
+
+    await reset_engine()
+    db_file = tmp_path / "test_ownership.sqlite3"
+    db_url = f"sqlite+aiosqlite:///{db_file.as_posix()}"
+    test_settings = Settings(
+        forge_mode="exposed",
+        forge_host="127.0.0.1",
+        forge_access_token="test-secret-token-32-chars-long",
+        forge_data_dir=tmp_path / "data",
+        database_url=db_url,
+        playground_enabled=True,
+        playground_max_sessions=5,
+    )
+    monkeypatch.setattr("mcp_forge.services.builds.get_settings", lambda: test_settings)
+    monkeypatch.setattr("mcp_forge.playground.manager.get_settings", lambda: test_settings)
+
+    alembic_cfg = Config("alembic.ini")
+    alembic_cfg.set_main_option("sqlalchemy.url", db_url)
+    command.upgrade(alembic_cfg, "head")
+
+    raw_text = (SAMPLE_DIR / "bookshop.openapi.yaml").read_text(encoding="utf-8")
+    sha256 = hashlib.sha256(raw_text.encode("utf-8")).hexdigest()
+
+    async with get_db_session(test_settings) as session:
+        proj = Project(name="Bookshop API", slug="bookshop-owner")
+        session.add(proj)
+        await session.flush()
+
+        settings_obj = ProjectSettings(project_id=proj.id, base_url="https://api.bookshop.com")
+        session.add(settings_obj)
+
+        spec_ver = SpecVersion(
+            project_id=proj.id,
+            version_no=1,
+            source_type="sample",
+            source_ref="bookshop.openapi.yaml",
+            format="yaml",
+            spec_kind="oas30",
+            sha256=sha256,
+            raw_text=raw_text,
+            operation_count=5,
+        )
+        session.add(spec_ver)
+        await session.commit()
+
+        build = await create_build_for_project(session, project_id=proj.id)
+
+        manager = SessionManager()
+        s = await manager.create_session(
+            session, build_id=build.id, target="mock", owner_principal="user_alice"
+        )
+
+        # Owner user_alice can access
+        active = manager.get_session(s.id, caller_principal="user_alice")
+        assert active.session_id == s.id
+
+        # Non-owner user_bob is rejected with ForbiddenError
+        with pytest.raises(ForbiddenError):
+            manager.get_session(s.id, caller_principal="user_bob")
+
+        with pytest.raises(ForbiddenError):
+            await manager.stop_session(session, s.id, caller_principal="user_bob")
+
+        # Owner can stop the session
+        await manager.stop_session(session, s.id, caller_principal="user_alice")
+        assert manager.active_count == 0

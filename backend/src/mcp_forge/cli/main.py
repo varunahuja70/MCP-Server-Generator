@@ -338,17 +338,104 @@ def serve(
 @app.command()
 def samples(
     json_output: bool = typer.Option(False, "--json", help="Output samples as JSON"),
+    seed: bool = typer.Option(
+        False, "--seed", help="Seed all bundled sample specifications into local database"
+    ),
 ) -> None:
-    """List bundled sample specifications."""
+    """List or seed bundled sample specifications."""
     known_samples = [
-        {"id": "bookshop", "file": "bookshop.openapi.yaml", "desc": "Bookshop API (OpenAPI 3.0)"},
-        {"id": "tasks", "file": "tasks.openapi.json", "desc": "Task Management API (OpenAPI 3.0)"},
+        {
+            "id": "bookshop",
+            "file": "bookshop.openapi.yaml",
+            "desc": "Bookshop API (OpenAPI 3.0)",
+            "title": "Bookshop API",
+            "format": "yaml",
+        },
+        {
+            "id": "tasks",
+            "file": "tasks.openapi.json",
+            "desc": "Task Management API (OpenAPI 3.0)",
+            "title": "Task Management API",
+            "format": "json",
+        },
         {
             "id": "legacy",
             "file": "legacy-swagger2.json",
             "desc": "Legacy Swagger API (Swagger 2.0)",
+            "title": "Legacy Swagger API",
+            "format": "json",
         },
     ]
+
+    if seed:
+
+        async def _seed_samples() -> list[str]:
+            import hashlib
+
+            from sqlalchemy import select
+
+            from mcp_forge.db.models.project import Project
+            from mcp_forge.db.models.project_settings import ProjectSettings
+            from mcp_forge.db.models.spec_version import SpecVersion
+            from mcp_forge.db.session import get_db_session
+
+            seeded_names: list[str] = []
+            async with get_db_session() as db:
+                for s in known_samples:
+                    f = SAMPLES_DIR / s["file"]
+                    if not f.exists():
+                        continue
+
+                    slug = f"{s['id']}-sample"
+                    stmt = select(Project).where(Project.slug == slug)
+                    existing = (await db.execute(stmt)).scalar_one_or_none()
+                    if existing:
+                        continue
+
+                    raw_text = f.read_text(encoding="utf-8")
+                    parsed = parse_and_validate(raw_text)
+                    ir = normalize_spec(parsed)
+
+                    project = Project(name=s["title"], slug=slug)
+                    db.add(project)
+                    await db.flush()
+
+                    base_url = ir.servers[0].url if ir.servers else "http://127.0.0.1:8000"
+                    db.add(ProjectSettings(project_id=project.id, base_url=base_url))
+
+                    sha256 = hashlib.sha256(raw_text.encode("utf-8")).hexdigest()
+                    db.add(
+                        SpecVersion(
+                            project_id=project.id,
+                            version_no=1,
+                            source_type="sample",
+                            source_ref=s["file"],
+                            format=s["format"],
+                            spec_kind=parsed.kind,
+                            sha256=sha256,
+                            raw_text=raw_text,
+                            operation_count=len(ir.operations),
+                        )
+                    )
+                    await db.commit()
+                    seeded_names.append(s["title"])
+            return seeded_names
+
+        created = asyncio.run(_seed_samples())
+        if json_output:
+            typer.echo(json.dumps({"seeded": created, "count": len(created)}))
+        else:
+            if created:
+                typer.secho(
+                    f"[OK] Successfully seeded {len(created)} sample project(s):",
+                    fg=typer.colors.GREEN,
+                )
+                for name in created:
+                    typer.echo(f"  + {name}")
+            else:
+                typer.echo("All bundled sample projects are already seeded in the database.")
+        return
+
     results = []
     for s in known_samples:
         f = SAMPLES_DIR / s["file"]

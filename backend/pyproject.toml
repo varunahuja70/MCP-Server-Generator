@@ -41,6 +41,7 @@ dev = [
     "hypothesis>=6.115.0",
     "coverage>=7.6.0",
     "types-pyyaml",
+    "pip-audit>=2.8.0",
 ]
 
 [project.scripts]

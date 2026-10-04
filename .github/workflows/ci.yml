@@ -24,7 +24,7 @@ jobs:
       - name: Install dependencies
         run: |
           cd backend
-          uv sync --dev
+          uv sync --extra dev
 
       - name: Lint (Ruff)
         run: |

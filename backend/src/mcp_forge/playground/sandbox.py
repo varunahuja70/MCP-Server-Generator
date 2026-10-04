@@ -1,4 +1,8 @@
-"""Playground subprocess sandbox launcher with scrubbed environment and process group management."""
+"""Process-isolated playground subprocess launcher with scrubbed environment and process group management.
+
+Note: Provides process-level isolation, isolated temporary scratchpaths, and environment
+scrubbing. This is not hardware/container-level OS virtualization.
+"""
 
 import os
 import shutil
@@ -10,7 +14,7 @@ from pathlib import Path
 
 
 class SandboxLauncher:
-    """Manages the isolated execution environment and subprocess lifecycle of an MCP server."""
+    """Manages the process-isolated execution environment and subprocess lifecycle of an MCP server."""
 
     def __init__(
         self,

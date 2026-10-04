@@ -2,7 +2,6 @@
 
 import asyncio
 import time
-from pathlib import Path
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,15 +14,16 @@ from mcp_forge.db.models.build import Build
 from mcp_forge.db.models.playground_session import PlaygroundSession
 from mcp_forge.db.models.trace_event import TraceEvent
 from mcp_forge.db.uuid_helper import utcnow_iso, uuidv7
-from mcp_forge.errors import ConflictError, ForgeError, NotFoundError
+from mcp_forge.errors import ConflictError, ForbiddenError, ForgeError, NotFoundError
 from mcp_forge.mock_api.server import MockServer
 from mcp_forge.playground.client import PlaygroundClient
 from mcp_forge.playground.sandbox import SandboxLauncher
 from mcp_forge.playground.trace import TraceRecorder
+from mcp_forge.services.builds import resolve_build_paths
 
 
 class ActiveSession:
-    """In-memory representation of an active playground session."""
+    """In-memory representation of an active process-isolated playground session."""
 
     def __init__(
         self,
@@ -33,6 +33,7 @@ class ActiveSession:
         client: PlaygroundClient,
         trace: TraceRecorder,
         mock_server: MockServer | None = None,
+        owner_principal: str = "local",
     ) -> None:
         self.session_id = session_id
         self.build_id = build_id
@@ -40,6 +41,7 @@ class ActiveSession:
         self.client = client
         self.trace = trace
         self.mock_server = mock_server
+        self.owner_principal = owner_principal
         self.last_active_ts = time.time()
         self.created_at = time.time()
 
@@ -48,20 +50,26 @@ class ActiveSession:
 
 
 class SessionManager:
-    """Manages active Playground sessions with concurrency limits and cleanup."""
+    """Manages active process-isolated Playground sessions with concurrency limits and cleanup."""
 
     def __init__(self) -> None:
         self._active_sessions: dict[str, ActiveSession] = {}
+        self._lock = asyncio.Lock()
         self._cleanup_task: asyncio.Task[None] | None = None
 
     @property
     def active_count(self) -> int:
         return len(self._active_sessions)
 
-    def get_session(self, session_id: str) -> ActiveSession:
+    def get_session(self, session_id: str, caller_principal: str | None = None) -> ActiveSession:
         if session_id not in self._active_sessions:
             raise NotFoundError(f"Active playground session '{session_id}' not found.")
         s = self._active_sessions[session_id]
+        if caller_principal and caller_principal != "local" and s.owner_principal != "local":
+            if s.owner_principal != caller_principal:
+                raise ForbiddenError(
+                    "You do not have permission to access this playground session."
+                )
         s.touch()
         return s
 
@@ -71,6 +79,7 @@ class SessionManager:
         build_id: str,
         target: str = "mock",  # mock | live
         user_env_vars: dict[str, str] | None = None,
+        owner_principal: str = "local",
     ) -> PlaygroundSession:
         """Create a new playground session with isolation and concurrency checks."""
         settings = get_settings()
@@ -83,94 +92,109 @@ class SessionManager:
                 status_code=403,
             )
 
-        # 2. Check concurrency cap
-        if len(self._active_sessions) >= settings.playground_max_sessions:
-            raise ConflictError(
-                f"Maximum concurrent playground sessions ({settings.playground_max_sessions}) reached. "
-                "Please stop an existing session first.",
+        async with self._lock:
+            # 2. Check concurrency cap
+            if len(self._active_sessions) >= settings.playground_max_sessions:
+                raise ConflictError(
+                    f"Maximum concurrent playground sessions ({settings.playground_max_sessions}) reached. "
+                    "Please stop an existing session first.",
+                )
+
+            # 3. Retrieve build with eager loaded project and spec_version
+            stmt_build = (
+                select(Build)
+                .options(joinedload(Build.project), joinedload(Build.spec_version))
+                .where(Build.id == build_id)
+            )
+            res_build = await db_session.execute(stmt_build)
+            build = res_build.scalar_one_or_none()
+
+            if not build:
+                raise NotFoundError(f"Build with ID '{build_id}' not found.")
+            if build.status != "succeeded":
+                raise ConflictError(f"Cannot test build with status '{build.status}'.")
+
+            # Locate server directory using canonical resolver
+            server_dir, _ = resolve_build_paths(build, build.project.slug)
+            if not server_dir.exists():
+                raise NotFoundError(f"Generated server directory '{server_dir}' not found on disk.")
+
+            session_id = uuidv7()
+            user_env_vars = user_env_vars or {}
+            mock_server: MockServer | None = None
+            base_url_override: str | None = None
+
+            # 4. If target is mock, start in-process mock server
+            if target == "mock":
+                raw_text = build.spec_version.raw_text
+                parsed = parse_and_validate(raw_text)
+                ir = normalize_spec(parsed)
+                mock_server = MockServer(ir)
+                base_url_override = await mock_server.start()
+
+            # 5. Extract secrets for trace redaction
+            secret_values = set(user_env_vars.values())
+
+            # 6. Setup trace recorder and sandbox launcher
+            trace = TraceRecorder(session_id=session_id, extra_secrets=secret_values)
+            sandbox = SandboxLauncher(
+                server_dir=server_dir,
+                user_env_vars=user_env_vars,
+                base_url_override=base_url_override,
             )
 
-        # 3. Retrieve build with eager loaded project and spec_version
-        stmt_build = (
-            select(Build)
-            .options(joinedload(Build.project), joinedload(Build.spec_version))
-            .where(Build.id == build_id)
-        )
-        res_build = await db_session.execute(stmt_build)
-        build = res_build.scalar_one_or_none()
+            client = PlaygroundClient(sandbox=sandbox, trace=trace)
 
-        if not build:
-            raise NotFoundError(f"Build with ID '{build_id}' not found.")
-        if build.status != "succeeded":
-            raise ConflictError(f"Cannot test build with status '{build.status}'.")
+            # Connect client to server
+            await client.connect()
 
-        # Locate server directory
-        server_dir = Path(build.artifact_path).parent / f"{build.project.slug}-mcp"
-        if not server_dir.exists():
-            raise NotFoundError(f"Generated server directory '{server_dir}' not found on disk.")
+            # Store in database
+            db_model = PlaygroundSession(
+                id=session_id,
+                build_id=build_id,
+                target=target,
+                status="running",
+                started_at=utcnow_iso(),
+            )
+            db_session.add(db_model)
+            await db_session.commit()
+            await db_session.refresh(db_model)
 
-        session_id = uuidv7()
-        user_env_vars = user_env_vars or {}
-        mock_server: MockServer | None = None
-        base_url_override: str | None = None
+            # Store in memory
+            active = ActiveSession(
+                session_id=session_id,
+                build_id=build_id,
+                target=target,
+                client=client,
+                trace=trace,
+                mock_server=mock_server,
+                owner_principal=owner_principal,
+            )
+            self._active_sessions[session_id] = active
 
-        # 4. If target is mock, start in-process mock server
-        if target == "mock":
-            raw_text = build.spec_version.raw_text
-            parsed = parse_and_validate(raw_text)
-            ir = normalize_spec(parsed)
-            mock_server = MockServer(ir)
-            base_url_override = await mock_server.start()
-
-        # 5. Extract secrets for trace redaction
-        secret_values = set(user_env_vars.values())
-
-        # 6. Setup trace recorder and sandbox launcher
-        trace = TraceRecorder(session_id=session_id, extra_secrets=secret_values)
-        sandbox = SandboxLauncher(
-            server_dir=server_dir,
-            user_env_vars=user_env_vars,
-            base_url_override=base_url_override,
-        )
-
-        client = PlaygroundClient(sandbox=sandbox, trace=trace)
-
-        # Connect client to server
-        await client.connect()
-
-        # Store in database
-        db_model = PlaygroundSession(
-            id=session_id,
-            build_id=build_id,
-            target=target,
-            status="running",
-            started_at=utcnow_iso(),
-        )
-        db_session.add(db_model)
-        await db_session.commit()
-        await db_session.refresh(db_model)
-
-        # Store in memory
-        active = ActiveSession(
-            session_id=session_id,
-            build_id=build_id,
-            target=target,
-            client=client,
-            trace=trace,
-            mock_server=mock_server,
-        )
-        self._active_sessions[session_id] = active
-
-        return db_model
+            return db_model
 
     async def stop_session(
         self,
         db_session: AsyncSession,
         session_id: str,
         exit_info: str | None = None,
+        caller_principal: str | None = None,
     ) -> None:
         """Stop and clean up an active session."""
-        active = self._active_sessions.pop(session_id, None)
+        async with self._lock:
+            active = self._active_sessions.get(session_id)
+            if (
+                active
+                and caller_principal
+                and caller_principal != "local"
+                and active.owner_principal != "local"
+            ):
+                if active.owner_principal != caller_principal:
+                    raise ForbiddenError(
+                        "You do not have permission to terminate this playground session."
+                    )
+            active = self._active_sessions.pop(session_id, None)
         if active:
             # Disconnect client
             await active.client.disconnect()
