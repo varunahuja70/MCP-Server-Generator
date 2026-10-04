@@ -89,8 +89,20 @@ class SandboxLauncher:
             # Windows: CREATE_NEW_PROCESS_GROUP
             creationflags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
         else:
-            # POSIX: setsid for process group detachment
-            preexec_fn = getattr(os, "setsid", None)
+            # POSIX: setsid for process group detachment and best-effort resource limits
+            def _posix_setup() -> None:
+                if hasattr(os, "setsid"):
+                    os.setsid()
+                try:
+                    import resource
+
+                    # 1 GB virtual memory address space limit
+                    max_mem = 1024 * 1024 * 1024
+                    resource.setrlimit(resource.RLIMIT_AS, (max_mem, max_mem))
+                except Exception:  # noqa: S110
+                    pass
+
+            preexec_fn = _posix_setup
 
         self.process = subprocess.Popen(  # noqa: S603
             [sys.executable, str(server_py)],

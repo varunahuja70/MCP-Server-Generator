@@ -1,4 +1,11 @@
-"""Playground session manager: limits, session tracking, mock/live targets, and background cleanup."""
+"""Playground session manager: limits, session tracking, mock/live targets, and background cleanup.
+
+Deployment Architecture Note:
+Active playground sessions, subprocess references, and stdio pipes are process-local in-memory state.
+MCP Forge runs as a single-process server (1 uvicorn worker). Multi-worker deployments (e.g. uvicorn -w 4)
+are not supported for interactive playground sessions as child subprocess handles cannot be shared across
+separate OS processes without an external supervisor daemon.
+"""
 
 import asyncio
 import time
@@ -145,8 +152,15 @@ class SessionManager:
 
             client = PlaygroundClient(sandbox=sandbox, trace=trace)
 
-            # Connect client to server
-            await client.connect()
+            # Connect client to server with guaranteed cleanup on startup failure
+            try:
+                await client.connect()
+            except Exception:
+                await client.disconnect()
+                sandbox.terminate()
+                if mock_server:
+                    await mock_server.stop()
+                raise
 
             # Store in database
             db_model = PlaygroundSession(

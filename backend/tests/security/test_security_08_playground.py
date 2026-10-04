@@ -200,3 +200,7 @@ async def test_session_manager_ownership_enforcement(
         # Owner can stop the session
         await manager.stop_session(session, s.id, caller_principal="user_alice")
         assert manager.active_count == 0
+
+        # Double stop is safe and idempotent
+        await manager.stop_session(session, s.id, caller_principal="user_alice")
+        assert manager.active_count == 0

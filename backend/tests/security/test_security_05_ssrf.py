@@ -56,7 +56,7 @@ def test_ssrf_blocks_numeric_hex_octal_ip_representations() -> None:
         "http://0177.0.0.1/",  # Octal 127.0.0.1
         "http://2886729729/",  # Decimal 172.16.0.1
         "http://0xa000001/",  # Hex 10.0.0.1
-        "http://0251.0254.0252.0376/",  # Octal 169.254.169.254
+        "http://0251.0376.0251.0376/",  # Octal 169.254.169.254
     ]
     for url in blocked_representations:
         with pytest.raises(SSRFBlockedError):
@@ -137,3 +137,55 @@ async def test_safe_fetch_public_url_succeeds() -> None:
     data, content_type = await safe_fetch_url("https://api.example.com/openapi.yaml")
     assert data == content
     assert "yaml" in content_type
+
+
+def test_ssrf_blocks_ipv4_mapped_ipv6() -> None:
+    """IPv4-mapped IPv6 addresses representing private or loopback ranges must be blocked."""
+    mapped_blocked = [
+        "http://[::ffff:127.0.0.1]/spec.yaml",
+        "http://[::ffff:10.0.0.1]/spec.yaml",
+        "http://[::ffff:169.254.169.254]/spec.yaml",
+        "http://[::ffff:192.168.1.1]/spec.yaml",
+    ]
+    for url in mapped_blocked:
+        with pytest.raises(SSRFBlockedError):
+            validate_url_ssrf(url)
+
+
+def test_ssrf_blocks_public_hostname_resolving_to_private_ip(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """DNS resolution resulting in private/loopback/metadata IP must be blocked."""
+
+    def rebind_getaddrinfo(host: Any, port: Any, *args: Any, **kwargs: Any) -> Any:
+        if host == "rebind.attacker.com":
+            return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("169.254.169.254", port or 0))]
+        if host == "local-rebind.attacker.com":
+            return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("127.0.0.1", port or 0))]
+        return socket.getaddrinfo(host, port, *args, **kwargs)
+
+    monkeypatch.setattr(socket, "getaddrinfo", rebind_getaddrinfo)
+
+    with pytest.raises(SSRFBlockedError, match="resolved to blocked IP"):
+        validate_url_ssrf("https://rebind.attacker.com/spec.json")
+
+    with pytest.raises(SSRFBlockedError, match="resolved to blocked IP"):
+        validate_url_ssrf("https://local-rebind.attacker.com/spec.json")
+
+
+def test_ssrf_allow_private_preserves_scheme_and_credential_validation() -> None:
+    """allow_private must NOT disable scheme validation or credential blocking."""
+    # Bad schemes must still be blocked even if allow_private=True
+    with pytest.raises(SSRFBlockedError, match="Unsupported URL scheme"):
+        validate_url_ssrf("ftp://127.0.0.1/spec.yaml", allow_private=True)
+
+    with pytest.raises(SSRFBlockedError, match="Unsupported URL scheme"):
+        validate_url_ssrf("file:///etc/passwd", allow_private=True)
+
+    # Embedded credentials must still be blocked even if allow_private=True
+    with pytest.raises(SSRFBlockedError, match="embedded authentication credentials"):
+        validate_url_ssrf("http://admin:secret@127.0.0.1/spec.yaml", allow_private=True)
+
+    # Valid loopback target allowed when explicitly permitted
+    valid_private = validate_url_ssrf("http://127.0.0.1:8000/spec.yaml", allow_private=True)
+    assert valid_private == "http://127.0.0.1:8000/spec.yaml"
