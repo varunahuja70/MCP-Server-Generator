@@ -250,3 +250,56 @@ async def test_ssrf_protected_network_backend_blocks_private_destinations() -> N
 
     with pytest.raises(SSRFBlockedError):
         await backend.connect_tcp("10.0.0.1", 80)
+
+    # IPv6 unique local (fc00::/7) and link-local (fe80::/10)
+    with pytest.raises(SSRFBlockedError):
+        await backend.connect_tcp("fc00::1", 80)
+
+    with pytest.raises(SSRFBlockedError):
+        await backend.connect_tcp("fe80::1", 80)
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_safe_fetch_blocks_redirect_to_private_target() -> None:
+    """Redirect chain attempting to pivot to private IP must be blocked on the redirect hop."""
+    respx.get("https://api.example.com/start").mock(
+        return_value=Response(
+            302,
+            headers={"Location": "http://169.254.169.254/latest/meta-data"},
+        )
+    )
+
+    with pytest.raises(SSRFBlockedError, match="blocked IP"):
+        await safe_fetch_url("https://api.example.com/start")
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_safe_fetch_blocks_redirect_to_loopback() -> None:
+    """Redirect chain attempting to pivot to loopback must be blocked on the redirect hop."""
+    respx.get("https://api.example.com/jump").mock(
+        return_value=Response(
+            302,
+            headers={"Location": "http://127.0.0.1:8080/secret"},
+        )
+    )
+
+    with pytest.raises(SSRFBlockedError, match="blocked IP"):
+        await safe_fetch_url("https://api.example.com/jump")
+
+
+@pytest.mark.asyncio
+async def test_ssrf_dns_rebinding_simulation() -> None:
+    """When a public hostname resolves to a blocked IP address at connection time, connection is refused."""
+    from unittest.mock import patch
+
+    from mcp_forge.core.security.ssrf import SSRFProtectedNetworkBackend
+
+    backend = SSRFProtectedNetworkBackend(allow_private=False)
+
+    # Simulate DNS rebinding: public hostname 'rebind.attacker.com' resolves to loopback 127.0.0.1
+    fake_addrinfo = [(2, 1, 6, "", ("127.0.0.1", 443))]
+    with patch("socket.getaddrinfo", return_value=fake_addrinfo):
+        with pytest.raises(SSRFBlockedError, match="resolved to blocked IP"):
+            await backend.connect_tcp("rebind.attacker.com", 443)

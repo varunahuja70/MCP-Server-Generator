@@ -305,7 +305,7 @@ MCP-Server-Generator/
 │   │   ├── playground/          # Session manager, sandbox launcher, SSE trace bus
 │   │   ├── services/            # Build management, deterministic ZIP packaging
 │   │   └── templates/           # Jinja2 templates and runtime code for generated servers
-│   ├── tests/                   # 190 automated unit, security, integration, and performance tests
+│   ├── tests/                   # 193 automated unit, security, integration, and performance tests
 │   ├── Dockerfile               # Backend container build definition
 │   └── pyproject.toml           # Python packaging configuration and dependency lockfile
 ├── frontend/
@@ -334,9 +334,9 @@ MCP-Server-Generator/
 All changes are verified through strict automated checks across backend and frontend:
 
 ### Automated Test Coverage
-- **Backend Test Suite:** 190 tests passing (`pytest` with 86% coverage, including 12 dedicated security test suites).
+- **Backend Test Suite:** 193 tests passing (`pytest` with 86% coverage, including 12 dedicated security test suites).
 - **Frontend Test Suite:** 7 tests passing (`vitest` with Testing Library).
-- **Total:** 197 automated tests executed in local and remote CI pipelines.
+- **Total:** 200 automated tests executed in local and remote CI pipelines.
 
 ### Verification Commands
 

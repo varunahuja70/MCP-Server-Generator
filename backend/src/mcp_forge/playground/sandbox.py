@@ -171,11 +171,20 @@ class SandboxLauncher:
             if proc.poll() is None:
                 try:
                     if sys.platform == "win32":
-                        # Send CTRL_BREAK_EVENT or force terminate process tree
+                        # Send CTRL_BREAK_EVENT and terminate entire process tree on Windows
                         try:
                             ctrl_break = getattr(signal, "CTRL_BREAK_EVENT", None)
                             if ctrl_break is not None:
                                 proc.send_signal(ctrl_break)
+                        except Exception:  # noqa: S110
+                            pass
+                        try:
+                            subprocess.run(  # noqa: S603
+                                ["taskkill", "/F", "/T", "/PID", str(proc.pid)],  # noqa: S607
+                                stdout=subprocess.DEVNULL,
+                                stderr=subprocess.DEVNULL,
+                                check=False,
+                            )
                         except Exception:  # noqa: S110
                             pass
                         proc.kill()
