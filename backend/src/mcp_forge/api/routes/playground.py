@@ -57,6 +57,7 @@ async def create_session(
     )
     return {
         "id": session_model.id,
+        "session_id": session_model.id,
         "build_id": session_model.build_id,
         "target": session_model.target,
         "status": session_model.status,

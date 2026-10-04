@@ -22,8 +22,8 @@ export function ProjectStepper({ projectId, activeStep }: ProjectStepperProps) {
   const currentIndex = STEPS.findIndex((s) => s.key === activeStep);
 
   return (
-    <div className="w-full border-b border-[var(--border)] bg-[var(--surface)] py-3 px-4 sm:px-6">
-      <div className="max-w-7xl mx-auto flex items-center justify-between sm:justify-start gap-2 sm:gap-6 overflow-x-auto">
+    <div className="w-full border-b border-[var(--border)] bg-[var(--surface)]/80 backdrop-blur-sm py-2.5 px-4 sm:px-6 lg:px-8">
+      <div className="max-w-[1440px] mx-auto flex items-center justify-between sm:justify-start gap-1.5 sm:gap-4 overflow-x-auto">
         {STEPS.map((s, idx) => {
           const isCurrent = s.key === activeStep;
           const isPassed = idx < currentIndex;
@@ -32,24 +32,24 @@ export function ProjectStepper({ projectId, activeStep }: ProjectStepperProps) {
             <Link
               key={s.key}
               href={s.href(projectId)}
-              className={`flex items-center gap-2 text-xs font-medium py-1 px-2.5 rounded-md whitespace-nowrap transition-colors ${
+              className={`flex items-center gap-2 text-xs font-medium py-1.5 px-3 rounded-xl whitespace-nowrap transition-all duration-200 ${
                 isCurrent
-                  ? "bg-white/10 text-[var(--text)] font-semibold"
+                  ? "bg-white/10 text-[var(--text)] font-semibold border border-white/10 shadow-sm"
                   : isPassed
                   ? "text-[var(--text)] hover:bg-white/5"
                   : "text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-white/5"
               }`}
             >
               <div
-                className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[10px] ${
+                className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold transition-all ${
                   isCurrent
-                    ? "bg-[var(--accent)] text-white"
+                    ? "bg-[#26D67C] text-black shadow-sm"
                     : isPassed
-                    ? "bg-[#15803D]/20 text-[#3DD68C] border border-[#15803D]/40"
+                    ? "bg-[#26D67C]/20 text-[#26D67C] border border-[#26D67C]/30"
                     : "bg-white/10 text-[var(--text-muted)]"
                 }`}
               >
-                {isPassed ? <Check className="h-2.5 w-2.5" /> : idx + 1}
+                {isPassed ? <Check className="h-2.5 w-2.5 stroke-[3]" /> : idx + 1}
               </div>
               <span>{s.label}</span>
             </Link>

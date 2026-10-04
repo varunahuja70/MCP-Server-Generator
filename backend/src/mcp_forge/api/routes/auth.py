@@ -44,6 +44,18 @@ async def login(
     return {"status": "ok", "message": "Logged in successfully"}
 
 
+@router.get("/status")
+async def auth_status(
+    settings: Settings = Depends(get_current_settings),
+) -> dict[str, object]:
+    """Get current auth status and server operating mode."""
+    return {
+        "authenticated": settings.forge_mode == "local",
+        "mode": settings.forge_mode,
+        "playground_enabled": settings.playground_enabled,
+    }
+
+
 @router.post("/logout")
 async def logout(response: Response) -> dict[str, str]:
     """Clear session cookie."""

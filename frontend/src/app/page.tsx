@@ -34,13 +34,22 @@ export default function HomePage() {
               Generate safe, production-grade MCP server projects from OpenAPI and Swagger specs.
             </p>
           </div>
-          <Link
-            href="/projects/new"
-            className="inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium rounded-md bg-[var(--accent)] text-white hover:opacity-90 active:scale-[0.98] transition-all cursor-pointer shrink-0"
-          >
-            <Plus className="h-4 w-4" />
-            <span>New Project</span>
-          </Link>
+          <div className="flex items-center gap-3">
+            <Link
+              href="/guide"
+              className="inline-flex items-center justify-center gap-2 px-4 py-2 text-xs font-semibold rounded-xl border border-[var(--border)] bg-white/5 hover:bg-white/10 text-[var(--text)] transition-all cursor-pointer shrink-0"
+            >
+              <BookOpen className="h-4 w-4 text-[#26D67C]" />
+              <span>How to Use (Guide)</span>
+            </Link>
+            <Link
+              href="/projects/new"
+              className="inline-flex items-center justify-center gap-2 px-5 py-2 text-xs font-semibold rounded-xl bg-[#26D67C] text-black hover:bg-[#20bd6d] active:scale-[0.98] transition-all cursor-pointer shadow-md shadow-[#26D67C]/20 shrink-0"
+            >
+              <Plus className="h-4 w-4" />
+              <span>New Project</span>
+            </Link>
+          </div>
         </div>
 
         {/* Try a Sample API Strip */}

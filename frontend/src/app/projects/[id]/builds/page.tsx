@@ -72,7 +72,7 @@ export default function BuildsPage({ params }: PageProps) {
   return (
     <div className="min-h-screen flex flex-col bg-[var(--background)]">
       <Navbar>
-        <div className="space-y-6 max-w-7xl mx-auto">
+        <div className="space-y-6 max-w-[1440px] mx-auto">
           {/* Header */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[var(--border)] pb-6">
             <div>
@@ -89,7 +89,7 @@ export default function BuildsPage({ params }: PageProps) {
                 type="button"
                 onClick={handleGenerate}
                 disabled={triggerBuildMutation.isPending}
-                className="inline-flex items-center gap-2 px-4 py-2 text-xs font-semibold rounded-md bg-[var(--accent)] text-white hover:opacity-90 active:scale-[0.98] transition-all cursor-pointer disabled:opacity-50"
+                className="inline-flex items-center gap-2 px-5 py-2.5 text-xs font-semibold rounded-xl bg-[#26D67C] text-black hover:bg-[#20bd6d] active:scale-[0.98] transition-all cursor-pointer shadow-md shadow-[#26D67C]/20 disabled:opacity-50"
               >
                 <Hammer className="h-4 w-4" />
                 <span>{triggerBuildMutation.isPending ? "Generating..." : "Generate Build"}</span>
@@ -97,9 +97,9 @@ export default function BuildsPage({ params }: PageProps) {
 
               <Link
                 href={`/projects/${projectId}/playground`}
-                className="inline-flex items-center gap-2 px-4 py-2 text-xs font-semibold rounded-md border border-[var(--border)] bg-white/5 hover:bg-white/10 text-[var(--text)] transition-all cursor-pointer shrink-0"
+                className="inline-flex items-center gap-2 px-4 py-2.5 text-xs font-semibold rounded-xl border border-[var(--border)] bg-white/5 hover:bg-white/10 text-[var(--text)] transition-all cursor-pointer shrink-0"
               >
-                <Terminal className="h-4 w-4 text-[var(--accent)]" />
+                <Terminal className="h-4 w-4 text-[#26D67C]" />
                 <span>Open Playground</span>
               </Link>
             </div>
@@ -141,18 +141,18 @@ export default function BuildsPage({ params }: PageProps) {
                     <div
                       key={b.id}
                       onClick={() => setSelectedBuildId(b.id)}
-                      className={`p-4 rounded-lg border transition-all cursor-pointer flex flex-col sm:flex-row sm:items-center justify-between gap-4 ${
+                      className={`p-4 rounded-xl border transition-all cursor-pointer flex flex-col sm:flex-row sm:items-center justify-between gap-4 ${
                         isSelected
-                          ? "border-[var(--accent)] bg-[var(--surface-raised)]"
+                          ? "border-[#26D67C]/50 bg-[var(--surface-raised)] shadow-md shadow-[#26D67C]/5"
                           : "border-[var(--border)] bg-[var(--surface)] hover:border-white/20"
                       }`}
                     >
                       <div className="flex items-center gap-3">
                         <div
-                          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-md ${
+                          className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${
                             isSucceeded
-                              ? "bg-[#15803D]/15 text-[#3DD68C]"
-                              : "bg-[var(--danger)]/15 text-[var(--danger)]"
+                              ? "bg-[#26D67C]/15 text-[#26D67C] border border-[#26D67C]/20"
+                              : "bg-[var(--danger)]/15 text-[var(--danger)] border border-[var(--danger)]/20"
                           }`}
                         >
                           {isSucceeded ? (
@@ -168,10 +168,10 @@ export default function BuildsPage({ params }: PageProps) {
                               Build #{b.build_no}
                             </span>
                             <span
-                              className={`text-[10px] font-mono uppercase px-1.5 py-0.5 rounded ${
+                              className={`text-[10px] font-mono uppercase px-2 py-0.5 rounded-full font-semibold ${
                                 isSucceeded
-                                  ? "bg-[#15803D]/20 text-[#3DD68C]"
-                                  : "bg-[var(--danger)]/20 text-[var(--danger)]"
+                                  ? "bg-[#26D67C]/15 text-[#26D67C] border border-[#26D67C]/30"
+                                  : "bg-[var(--danger)]/15 text-[var(--danger)] border border-[var(--danger)]/30"
                               }`}
                             >
                               {b.status}
@@ -194,7 +194,7 @@ export default function BuildsPage({ params }: PageProps) {
                             href={`/api/builds/${b.id}/download`}
                             download
                             onClick={(e) => e.stopPropagation()}
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded border border-[var(--border)] bg-white/5 hover:bg-white/10 text-[var(--text)] transition-all cursor-pointer"
+                            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-medium rounded-xl border border-[var(--border)] bg-white/5 hover:bg-white/10 text-[var(--text)] transition-all cursor-pointer shadow-sm"
                           >
                             <Download className="h-3.5 w-3.5" />
                             <span>Download ZIP</span>
@@ -214,7 +214,7 @@ export default function BuildsPage({ params }: PageProps) {
               {/* File Browser Grid */}
               <div className="space-y-2">
                 <h3 className="text-sm font-semibold text-[var(--text)]">Project File Tree</h3>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 rounded-lg border border-[var(--border)] bg-[var(--surface)] overflow-hidden">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 rounded-2xl border border-[var(--border)] bg-[var(--surface)] overflow-hidden shadow-sm">
                   {/* File tree sidebar */}
                   <div className="p-4 border-r border-[var(--border)] overflow-y-auto max-h-[500px]">
                     {fileTree && fileTree.length > 0 ? (

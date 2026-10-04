@@ -89,21 +89,22 @@ def generate_client_snippets(
     }
 
 
-def list_build_file_tree(project_dir: Path) -> list[dict[str, Any]]:
+def list_build_file_tree(project_dir: Path, root_dir: Path | None = None) -> list[dict[str, Any]]:
     """List project directory tree recursively in a sorted hierarchical structure."""
     if not project_dir.exists():
         return []
 
+    base = root_dir if root_dir is not None else project_dir
     items: list[dict[str, Any]] = []
     for entry in sorted(project_dir.iterdir(), key=lambda p: (not p.is_dir(), p.name.lower())):
-        rel = entry.relative_to(project_dir).as_posix()
+        rel = entry.relative_to(base).as_posix()
         if entry.is_dir():
             items.append(
                 {
                     "name": entry.name,
                     "path": rel,
                     "type": "directory",
-                    "children": list_build_file_tree(entry),
+                    "children": list_build_file_tree(entry, root_dir=base),
                 }
             )
         else:

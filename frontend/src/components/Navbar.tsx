@@ -23,7 +23,7 @@ export function Navbar({ children }: NavbarProps) {
       {auth && <ModeBanner mode={auth.mode} playgroundEnabled={auth.playground_enabled} />}
 
       <header className="sticky top-0 z-40 w-full border-b border-[var(--border)] bg-[var(--surface)]/80 backdrop-blur-md">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 flex h-14 items-center justify-between">
+        <div className="max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 flex h-14 items-center justify-between">
           <div className="flex items-center gap-8">
             <Link
               href="/"
@@ -56,6 +56,16 @@ export function Navbar({ children }: NavbarProps) {
               >
                 New Project
               </Link>
+              <Link
+                href="/guide"
+                className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                  pathname === "/guide"
+                    ? "bg-[#26D67C]/15 text-[#26D67C] font-semibold"
+                    : "text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-white/5"
+                }`}
+              >
+                Guide (How to Use)
+              </Link>
             </nav>
           </div>
 
@@ -80,7 +90,7 @@ export function Navbar({ children }: NavbarProps) {
         </div>
       </header>
 
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 py-6 sm:py-8">
+      <main className="flex-1 max-w-[1440px] w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
         {children}
       </main>
     </div>

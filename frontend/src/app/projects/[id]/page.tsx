@@ -110,7 +110,7 @@ export default function ProjectOverviewPage({ params }: PageProps) {
   return (
     <div className="min-h-screen flex flex-col bg-[var(--background)]">
       <Navbar>
-        <div className="space-y-8 max-w-7xl mx-auto">
+        <div className="space-y-8 max-w-[1440px] mx-auto">
           {/* Top Title & Header */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[var(--border)] pb-6">
             <div>
