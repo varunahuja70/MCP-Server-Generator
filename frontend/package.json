@@ -30,7 +30,7 @@
     "@vitejs/plugin-react": "^4.3.4",
     "eslint": "^9.16.0",
     "jsdom": "^26.0.0",
-    "postcss": "^8.4.49",
+    "postcss": "^8.5.29",
     "prettier": "^3.4.2",
     "tailwindcss": "^4.0.0",
     "typescript": "^5.7.2",
